@@ -4,6 +4,14 @@
 
 Create a stable application shell and persistence foundation without prematurely building the full import feature.
 
+## Implementation status
+
+**Branch:** `feat/m1-foundation`  
+**Pull request:** #2  
+**Status:** implementation complete for the first foundation pass; Windows runtime/build verification is pending before this milestone can be marked complete.
+
+Do not mark acceptance items complete based only on source review. M1 Definition of Done still requires frontend tests, Rust tests, a Windows Tauri launch, database restart persistence, and a Windows package/build check.
+
 ## Deliverables
 
 ### Project bootstrap
@@ -73,4 +81,4 @@ Settings/About displays:
 - [ ] migrations apply from empty DB.
 - [ ] app restarts without recreating/loss of DB.
 - [ ] navigation shell works.
-- [ ] README includes development commands.
+- [x] README includes development commands.

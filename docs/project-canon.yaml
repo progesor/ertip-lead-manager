@@ -2,13 +2,16 @@ project:
   name: Ertip Lead Manager
   type: windows_desktop
   owner: Ertip Medical
-  phase: documentation_bootstrap
+  phase: m1_foundation
 
 v1:
   platform:
     primary: windows_x64
     offline_capable: true
     single_user: true
+  ui:
+    primary_language: tr
+    domain_keys_language_neutral: true
   ingestion:
     mode: manual_xlsx_import
     live_google_sheets: false
@@ -17,6 +20,12 @@ v1:
     engine: sqlite
     source_data_immutable: true
     crm_data_separate: true
+    timestamps: utc_rfc3339_text
+    app_data_location: tauri_app_data_dir
+    automatic_retention_deletion: false
+  packaging:
+    internal_installer: nsis_current_user
+    unsigned_internal_build_allowed: true
   identity:
     submission_unique_key: external_lead_id
     contact_match:

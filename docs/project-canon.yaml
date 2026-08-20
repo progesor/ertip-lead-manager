@@ -1,0 +1,93 @@
+project:
+  name: Ertip Lead Manager
+  type: windows_desktop
+  owner: Ertip Medical
+  phase: documentation_bootstrap
+
+v1:
+  platform:
+    primary: windows_x64
+    offline_capable: true
+    single_user: true
+  ingestion:
+    mode: manual_xlsx_import
+    live_google_sheets: false
+    meta_api: false
+  storage:
+    engine: sqlite
+    source_data_immutable: true
+    crm_data_separate: true
+  identity:
+    submission_unique_key: external_lead_id
+    contact_match:
+      allow_email: true
+      allow_phone: true
+      allow_name_only: false
+      conflict_requires_review: true
+  product_interests:
+    cardinality: many
+    form_mode: multi_select
+    canonical_options:
+      - FUE_MICROMOTOR_SYSTEMS
+      - LONG_HAIR_FUE_SOLUTIONS
+      - FUE_PUNCHES
+      - IMPLANTERS_FORCEPS_SURGICAL_INSTRUMENTS
+      - MEDICAL_CHAIRS_CLINIC_FURNITURE
+      - OTHER_GENERAL_INFORMATION
+    internal_states:
+      - UNKNOWN
+    legacy_free_text_supported: true
+    preserve_raw_answers: true
+    future_export_header_and_serialization: verify_from_first_real_export
+  statuses:
+    - NEW
+    - CONTACTED
+    - REPLIED
+    - QUALIFIED
+    - QUOTE_SENT
+    - WON
+    - LOST
+    - INVALID
+  modules:
+    - import_preview
+    - import_history
+    - leads
+    - lead_detail
+    - pipeline
+    - notes
+    - activities
+    - follow_ups
+    - product_normalization
+    - data_quality
+    - dashboard
+    - analytics
+    - backup_restore
+  excluded:
+    - google_sheets_sync
+    - meta_leads_api
+    - meta_ads_spend_api
+    - whatsapp_api
+    - email_sending
+    - odoo
+    - cloud_database
+    - multi_user
+    - authentication
+    - mobile
+    - ai_required_features
+
+technology:
+  shell: tauri_2
+  frontend: react_typescript_vite
+  backend: rust
+  database: sqlite
+  database_access: sqlx
+  excel_parser: calamine
+  validation: zod
+  table: tanstack_table
+  charts: recharts
+
+data:
+  timestamps: utc_persist_local_display
+  preserve_source_timestamp: true
+  preserve_raw_payload: true
+  real_pii_in_repository: forbidden

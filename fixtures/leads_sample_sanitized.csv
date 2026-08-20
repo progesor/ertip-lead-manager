@@ -1,0 +1,6 @@
+id,created_time,ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,form_id,form_name,is_organic,platform,do_you_perform_hair_transplant_procedures?,which_product_would_you_like_to_receive_more_information_about?,full_name,email,phone_number,country,lead_status
+l:demo1001,2026-08-20T04:37:27-05:00,ag:demo,Demo Ad,as:demo,Leads,c:demo,Leads_Europe,f:demo1,Ertip Lead Form,false,ig,yes,Information,Alex Demo,alex.demo@example.test,p:+351910000001,PT,CREATED
+l:demo1001,2026-08-20T12:37:27+03:00,ag:demo,Demo Ad,as:demo,Leads,c:demo,Leads_Europe,f:demo1,Ertip Lead Form,false,ig,yes,Information,Alex Demo,alex.demo@example.test,p:+351910000001,PT,
+l:demo1002,2026-08-20T13:00:00+03:00,ag:demo,Demo Ad,as:demo,Leads,c:demo,Leads_Europe,f:demo2,Ertip Lead Form (v2),false,fb,-,micromotor,Jamie Repeat,jamie.repeat@example.test,p:+35679000002,MT,
+l:demo1003,2026-08-21T09:00:00+03:00,ag:demo,Demo Ad,as:demo,Leads,c:demo,Leads_Europe,f:demo1,Ertip Lead Form,false,ig,yes,Hair grafts,Jamie Repeat,jamie.repeat@example.test,p:+35679000002,MT,
+l:demo1004,2026-08-21T10:00:00+03:00,ag:demo,Demo Ad,as:demo,Leads,c:demo,Leads_Europe,f:demo1,Ertip Lead Form,false,fb,yes,?????,Taylor Unknown,taylor.unknown@example.test,p:+33700000000,DO,

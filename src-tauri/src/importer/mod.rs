@@ -33,6 +33,7 @@ mod tests {
     use super::parse_file;
     use crate::error::AppError;
     use crate::importer::headers::PRODUCT_INTEREST_HEADER;
+    use crate::importer::normalization::normalize_source_row;
 
     fn fixture(name: &str) -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -57,9 +58,11 @@ mod tests {
 
         assert_eq!(csv.rows.len(), xlsx.rows.len());
 
-        let compared_headers = [
+        // XLSX may represent a date/time as a native Excel serial, while CSV can preserve
+        // the original timezone-bearing text. Raw representations can therefore differ;
+        // the canonical UTC timestamp must be equivalent.
+        let compared_raw_headers = [
             "id",
-            "created_time",
             "full_name",
             "email",
             "phone_number",
@@ -71,7 +74,7 @@ mod tests {
         ];
 
         for (csv_row, xlsx_row) in csv.rows.iter().zip(&xlsx.rows) {
-            for header in compared_headers {
+            for header in compared_raw_headers {
                 assert_eq!(
                     csv_row.get(header),
                     xlsx_row.get(header),
@@ -79,6 +82,13 @@ mod tests {
                     csv_row.row_number
                 );
             }
+
+            assert_eq!(
+                normalize_source_row(csv_row).created_at_utc,
+                normalize_source_row(xlsx_row).created_at_utc,
+                "canonical timestamp mismatch on source row {}",
+                csv_row.row_number
+            );
         }
     }
 }

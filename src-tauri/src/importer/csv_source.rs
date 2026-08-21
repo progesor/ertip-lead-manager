@@ -73,6 +73,7 @@ mod tests {
     use std::path::PathBuf;
 
     use super::parse_csv;
+    use crate::error::AppError;
     use crate::importer::headers::PRODUCT_INTEREST_HEADER;
     use crate::importer::product_interest::{parse_product_answer, ProductAnswerMode};
     use crate::importer::source::SourceFormat;
@@ -82,6 +83,12 @@ mod tests {
             .join("..")
             .join("fixtures")
             .join(name)
+    }
+
+    fn temporary_csv(bytes: &[u8]) -> PathBuf {
+        let path = std::env::temp_dir().join(format!("ertip-leads-{}.csv", uuid::Uuid::new_v4()));
+        std::fs::write(&path, bytes).expect("write temporary CSV");
+        path
     }
 
     #[test]
@@ -116,5 +123,34 @@ mod tests {
 
         assert_eq!(table.rows[1].get("id"), Some("l:demo2002"));
         assert_eq!(table.rows[5].get("id"), Some("l:demo2002"));
+    }
+
+    #[test]
+    fn utf8_bom_and_unknown_optional_columns_are_supported() {
+        let content = concat!(
+            "\u{feff}id,created_time,full_name,email,phone_number,custom_agency_column\n",
+            "l:bom,2026-08-21T12:00:00+03:00,BOM Demo,bom@example.test,p:+905551234567,keep-me\n"
+        );
+        let path = temporary_csv(content.as_bytes());
+
+        let table = parse_csv(&path).expect("parse BOM CSV");
+        std::fs::remove_file(&path).ok();
+
+        assert_eq!(table.rows.len(), 1);
+        assert_eq!(table.rows[0].get("id"), Some("l:bom"));
+        assert_eq!(
+            table.rows[0].get("custom_agency_column"),
+            Some("keep-me")
+        );
+        assert!(table.rows[0].get("campaign_id").is_none());
+    }
+
+    #[test]
+    fn invalid_utf8_is_rejected_with_encoding_error() {
+        let path = temporary_csv(&[0xff, 0xfe, 0xfd]);
+        let error = parse_csv(&path).expect_err("reject invalid UTF-8 CSV");
+        std::fs::remove_file(&path).ok();
+
+        assert!(matches!(error, AppError::CsvEncoding));
     }
 }

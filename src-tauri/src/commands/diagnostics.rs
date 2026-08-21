@@ -1,5 +1,5 @@
 use serde::Serialize;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, State};
 
 use crate::error::CommandError;
 use crate::state::AppState;

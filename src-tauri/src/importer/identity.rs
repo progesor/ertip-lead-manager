@@ -63,29 +63,44 @@ impl IdentityEngine {
         existing_external_ids: impl IntoIterator<Item = String>,
         contacts: impl IntoIterator<Item = ContactIdentity>,
     ) -> Self {
-        let mut email_index: HashMap<String, BTreeSet<String>> = HashMap::new();
-        let mut phone_index: HashMap<String, BTreeSet<String>> = HashMap::new();
-
-        for contact in contacts {
-            if let Some(email) = contact.normalized_email {
-                email_index
-                    .entry(email)
-                    .or_default()
-                    .insert(contact.contact_id.clone());
-            }
-            if let Some(phone) = contact.normalized_phone {
-                phone_index
-                    .entry(phone)
-                    .or_default()
-                    .insert(contact.contact_id.clone());
-            }
-        }
-
-        Self {
+        let mut engine = Self {
             existing_external_ids: existing_external_ids.into_iter().collect(),
             seen_external_ids: HashSet::new(),
-            email_index,
-            phone_index,
+            email_index: HashMap::new(),
+            phone_index: HashMap::new(),
+        };
+
+        for contact in contacts {
+            engine.register_contact_identity(
+                contact.contact_id,
+                contact.normalized_email.as_deref(),
+                contact.normalized_phone.as_deref(),
+            );
+        }
+
+        engine
+    }
+
+    pub fn register_contact_identity(
+        &mut self,
+        contact_id: impl Into<String>,
+        normalized_email: Option<&str>,
+        normalized_phone: Option<&str>,
+    ) {
+        let contact_id = contact_id.into();
+
+        if let Some(email) = normalized_email.filter(|value| !value.is_empty()) {
+            self.email_index
+                .entry(email.to_string())
+                .or_default()
+                .insert(contact_id.clone());
+        }
+
+        if let Some(phone) = normalized_phone.filter(|value| !value.is_empty()) {
+            self.phone_index
+                .entry(phone.to_string())
+                .or_default()
+                .insert(contact_id);
         }
     }
 
@@ -314,6 +329,35 @@ mod tests {
             engine.decide(&submission("", None, None)),
             IdentityDecision::RowError {
                 code: "MISSING_EXTERNAL_LEAD_ID"
+            }
+        );
+    }
+
+    #[test]
+    fn provisional_contact_registered_from_earlier_row_is_repeat_later_in_same_file() {
+        let mut engine = IdentityEngine::new(Vec::<String>::new(), Vec::<ContactIdentity>::new());
+        let first = submission(
+            "l:first",
+            Some("same@example.com"),
+            Some("+905551234567"),
+        );
+        assert_eq!(engine.decide(&first), IdentityDecision::NewContact);
+
+        engine.register_contact_identity(
+            "preview:l:first",
+            first.normalized_email.as_deref(),
+            first.normalized_phone.as_deref(),
+        );
+
+        assert_eq!(
+            engine.decide(&submission(
+                "l:second",
+                Some("same@example.com"),
+                Some("+905551234567")
+            )),
+            IdentityDecision::RepeatContact {
+                contact_id: "preview:l:first".to_string(),
+                matched_by: vec![IdentityMatchKind::Email, IdentityMatchKind::Phone],
             }
         );
     }

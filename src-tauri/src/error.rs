@@ -15,6 +15,8 @@ pub enum AppError {
     UnsupportedFileType(String),
     #[error("import schema error: {0}")]
     ImportSchema(String),
+    #[error("import blocked: {0}")]
+    ImportBlocked(String),
     #[error("CSV parse error: {0}")]
     Csv(#[from] csv::Error),
     #[error("CSV input is not valid UTF-8")]
@@ -51,6 +53,13 @@ impl CommandError {
             message: "Seçilen lead dosyası okunamadı veya desteklenen yapıda değil.",
         }
     }
+
+    fn import_blocked() -> Self {
+        Self {
+            code: "IMPORT_BLOCKED",
+            message: "İçe aktarım, çözülmesi gereken kimlik çakışması veya satır hatası içeriyor.",
+        }
+    }
 }
 
 impl From<AppError> for CommandError {
@@ -60,6 +69,7 @@ impl From<AppError> for CommandError {
         match error {
             AppError::AppData(_) | AppError::Io(_) => Self::app_data(),
             AppError::Database(_) | AppError::Migration(_) => Self::database(),
+            AppError::ImportBlocked(_) => Self::import_blocked(),
             AppError::UnsupportedFileType(_)
             | AppError::ImportSchema(_)
             | AppError::Csv(_)
@@ -89,5 +99,12 @@ mod tests {
         let error = CommandError::from(AppError::UnsupportedFileType("txt".to_string()));
 
         assert_eq!(error.code, "IMPORT_FILE_ERROR");
+    }
+
+    #[test]
+    fn blocked_import_has_a_distinct_user_facing_category() {
+        let error = CommandError::from(AppError::ImportBlocked("identity conflict".to_string()));
+
+        assert_eq!(error.code, "IMPORT_BLOCKED");
     }
 }

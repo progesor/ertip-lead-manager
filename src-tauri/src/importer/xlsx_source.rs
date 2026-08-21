@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use calamine::{open_workbook_auto, Data, ExcelDateTime, ExcelDateTimeType, Reader};
+use calamine::{open_workbook_auto, Data, ExcelDateTime, Reader};
+use chrono::{Duration, NaiveDate};
 
 use crate::error::AppError;
 
@@ -9,6 +10,7 @@ use super::headers::{has_required_headers, normalize_header};
 use super::source::{SourceFormat, SourceRow, SourceTable};
 
 const MAX_HEADER_SCAN_ROWS: usize = 50;
+const MILLIS_PER_DAY: f64 = 86_400_000.0;
 
 pub fn parse_xlsx(path: &Path) -> Result<SourceTable, AppError> {
     let mut workbook = open_workbook_auto(path)?;
@@ -99,15 +101,17 @@ fn cell_to_string(cell: &Data) -> String {
 }
 
 fn excel_serial_to_iso(value: f64) -> String {
-    // Numeric fallback is restricted to the canonical created_time column. Meta exports
-    // normally provide an RFC3339 string; this also tolerates workbooks that store the
-    // same instant as a native/serial Excel datetime. A naked serial carries no timezone,
-    // so the fallback is represented as UTC.
-    excel_datetime_to_iso(ExcelDateTime::new(
-        value,
-        ExcelDateTimeType::DateTime,
-        false,
-    ))
+    // Numeric fallback is restricted to created_time. For contemporary workbooks the
+    // 1899-12-30 epoch accounts for Excel's historic leap-year compatibility rule.
+    // Round once at millisecond precision to avoid floating-point drift such as
+    // 06:59:59.100 for a value that represents exactly 07:00:00.
+    let epoch = NaiveDate::from_ymd_opt(1899, 12, 30)
+        .expect("valid Excel epoch")
+        .and_hms_opt(0, 0, 0)
+        .expect("valid midnight");
+    let milliseconds = (value * MILLIS_PER_DAY).round() as i64;
+    let datetime = epoch + Duration::milliseconds(milliseconds);
+    datetime.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
 }
 
 fn excel_datetime_to_iso(value: ExcelDateTime) -> String {

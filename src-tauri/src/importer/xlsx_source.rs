@@ -77,6 +77,13 @@ fn find_header_row(range: &calamine::Range<Data>) -> Option<(usize, Vec<String>)
 fn cell_to_string(cell: &Data) -> String {
     match cell {
         Data::Empty => String::new(),
+        Data::DateTime(value) if value.is_datetime() => {
+            let (year, month, day, hour, minute, second, millis) = value.to_ymd_hms_milli();
+            format!(
+                "{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{millis:03}Z"
+            )
+        }
+        Data::DateTimeIso(value) | Data::DurationIso(value) => value.clone(),
         _ => cell.to_string(),
     }
 }
@@ -93,6 +100,7 @@ mod tests {
 
     use super::parse_xlsx;
     use crate::importer::headers::PRODUCT_INTEREST_HEADER;
+    use crate::importer::normalization::normalize_source_row;
     use crate::importer::source::SourceFormat;
 
     fn fixture(name: &str) -> PathBuf {
@@ -115,14 +123,14 @@ mod tests {
     }
 
     #[test]
-    fn parses_verified_multiselect_xlsx_without_losing_pipe_values_or_timestamp_text() {
+    fn parses_verified_multiselect_xlsx_without_losing_pipe_values() {
         let table = parse_xlsx(&fixture("leads_sample_multiselect_sanitized.xlsx"))
             .expect("parse multi-select XLSX fixture");
 
         assert_eq!(table.rows.len(), 6);
         assert_eq!(
-            table.rows[0].get("created_time"),
-            Some("2026-08-20T10:00:00+03:00")
+            normalize_source_row(&table.rows[0]).created_at_utc.as_deref(),
+            Some("2026-08-20T07:00:00.000Z")
         );
         assert_eq!(
             table.rows[2].get(PRODUCT_INTEREST_HEADER),

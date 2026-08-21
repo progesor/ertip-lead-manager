@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+#[cfg(test)]
 use std::str::FromStr;
 
 use sqlx::sqlite::{
@@ -53,6 +54,7 @@ impl Database {
         })
     }
 
+    #[cfg(test)]
     pub fn pool(&self) -> &SqlitePool {
         &self.pool
     }

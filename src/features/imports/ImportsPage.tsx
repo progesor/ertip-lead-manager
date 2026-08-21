@@ -1,9 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
-import { useState } from "react";
+import { confirm, open } from "@tauri-apps/plugin-dialog";
+import { useCallback, useEffect, useState } from "react";
+import "./imports.css";
 import type {
   CommandError,
+  CommitImportResult,
   IdentityDecision,
+  ImportHistoryItem,
   ImportPreview,
   NormalizationWarning,
   ProductCode,
@@ -50,22 +53,59 @@ function formatBytes(value: number | null) {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function commandErrorMessage(error: unknown) {
+function formatDate(value: string | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("tr-TR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function commandErrorMessage(error: unknown, fallback: string) {
   if (typeof error === "object" && error !== null && "message" in error) {
     return String((error as CommandError).message);
   }
   if (typeof error === "string") return error;
-  return "Dosya önizlemesi hazırlanamadı.";
+  return fallback;
 }
 
 export function ImportsPage() {
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [history, setHistory] = useState<ImportHistoryItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [committing, setCommitting] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const rows = await invoke<ImportHistoryItem[]>("list_import_history");
+      setHistory(rows);
+    } catch (historyError) {
+      setError((current) => current ?? commandErrorMessage(historyError, "İçe aktarım geçmişi okunamadı."));
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadHistory();
+  }, [loadHistory]);
+
+  async function previewPath(path: string) {
+    const nextPreview = await invoke<ImportPreview>("preview_import", { path });
+    setPreview(nextPreview);
+    return nextPreview;
+  }
 
   async function chooseAndPreview() {
     setError(null);
+    setSuccess(null);
 
     const selection = await open({
       multiple: false,
@@ -80,13 +120,56 @@ export function ImportsPage() {
     setLoading(true);
 
     try {
-      const nextPreview = await invoke<ImportPreview>("preview_import", { path });
-      setPreview(nextPreview);
+      await previewPath(path);
     } catch (previewError) {
       setPreview(null);
-      setError(commandErrorMessage(previewError));
+      setError(commandErrorMessage(previewError, "Dosya önizlemesi hazırlanamadı."));
     } finally {
       setLoading(false);
+    }
+  }
+
+  const canCommit = Boolean(
+    preview &&
+      selectedPath &&
+      preview.summary.importableSubmissions > 0 &&
+      preview.summary.identityConflicts === 0 &&
+      preview.summary.rowErrors === 0,
+  );
+
+  async function commitSelectedFile() {
+    if (!preview || !selectedPath || !canCommit) return;
+
+    const accepted = await confirm(
+      `${preview.summary.importableSubmissions} submission veritabanına yazılacak. ` +
+        `${preview.summary.exactDuplicates} duplicate atlanacak. Devam edilsin mi?`,
+      {
+        title: "İçe Aktarımı Onayla",
+        kind: "warning",
+        okLabel: "İçe Aktar",
+        cancelLabel: "Vazgeç",
+      },
+    );
+
+    if (!accepted) return;
+
+    setCommitting(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const result = await invoke<CommitImportResult>("commit_import", { path: selectedPath });
+      setSuccess(
+        `${result.summary.importableSubmissions} submission başarıyla içe aktarıldı. ` +
+          `Batch: ${result.batchId.slice(0, 8)}…`,
+      );
+
+      await loadHistory();
+      await previewPath(selectedPath);
+    } catch (commitError) {
+      setError(commandErrorMessage(commitError, "İçe aktarım tamamlanamadı."));
+    } finally {
+      setCommitting(false);
     }
   }
 
@@ -96,14 +179,15 @@ export function ImportsPage() {
         <div>
           <div className="eyebrow">DATA INGESTION</div>
           <h1>İçe Aktarımlar</h1>
-          <p>XLSX veya CSV lead dosyasını önce analiz et; veritabanına yazmadan etkisini gör.</p>
+          <p>XLSX veya CSV lead dosyasını analiz et, sonucu doğrula ve tek işlemde yerel CRM'e aktar.</p>
         </div>
-        <button className="primary-button" type="button" onClick={chooseAndPreview} disabled={loading}>
+        <button className="primary-button" type="button" onClick={chooseAndPreview} disabled={loading || committing}>
           {loading ? "Analiz ediliyor…" : preview ? "Başka Dosya Seç" : "Dosya Seç"}
         </button>
       </div>
 
       {error ? <div className="import-error" role="alert">{error}</div> : null}
+      {success ? <div className="import-success" role="status">{success}</div> : null}
 
       {!preview ? (
         <article className="panel import-start-panel">
@@ -127,7 +211,26 @@ export function ImportsPage() {
                 {preview.source.sheetName ? ` · ${preview.source.sheetName}` : ""}
               </p>
             </div>
-            <div className="placeholder-pill">Salt okunur önizleme</div>
+            <div className="import-source-actions">
+              <div className="placeholder-pill">
+                {preview.summary.importableSubmissions > 0 ? "Önizleme hazır" : "Yeni kayıt yok"}
+              </div>
+              <button
+                className="primary-button import-commit-button"
+                type="button"
+                onClick={commitSelectedFile}
+                disabled={!canCommit || committing || loading}
+                title={
+                  preview.summary.identityConflicts > 0 || preview.summary.rowErrors > 0
+                    ? "Çakışma veya hata bulunan dosya içe aktarılamaz."
+                    : undefined
+                }
+              >
+                {committing
+                  ? "İçe aktarılıyor…"
+                  : `${preview.summary.importableSubmissions} Kaydı İçe Aktar`}
+              </button>
+            </div>
           </article>
 
           {preview.source.ignoredAgencyColumns.length > 0 ? (
@@ -151,7 +254,9 @@ export function ImportsPage() {
             <div className="panel-heading">
               <div>
                 <h2>Satır Önizlemesi</h2>
-                <p>İlk 100 satır gösteriliyor. Bu aşamada hiçbir lead veritabanına yazılmaz.</p>
+                <p>
+                  İlk 100 satır gösteriliyor. İçe aktarım sırasında dosya ve veritabanı tekrar doğrulanır.
+                </p>
               </div>
               {selectedPath ? <span className="import-path" title={selectedPath}>{selectedPath}</span> : null}
             </div>
@@ -213,6 +318,8 @@ export function ImportsPage() {
           </article>
         </>
       )}
+
+      <ImportHistory history={history} loading={historyLoading} />
     </section>
   );
 }
@@ -222,6 +329,62 @@ function SummaryCard({ label, value }: { label: string; value: number }) {
     <article className="kpi-card">
       <div className="kpi-label">{label}</div>
       <div className="kpi-value">{value}</div>
+    </article>
+  );
+}
+
+function ImportHistory({ history, loading }: { history: ImportHistoryItem[]; loading: boolean }) {
+  return (
+    <article className="panel import-history-panel">
+      <div className="panel-heading">
+        <div>
+          <h2>İçe Aktarım Geçmişi</h2>
+          <p>Son 50 import batch'i. Duplicate sayıları dahil olmak üzere işlem özeti saklanır.</p>
+        </div>
+        {loading ? <span className="placeholder-pill">Yükleniyor…</span> : null}
+      </div>
+
+      {history.length === 0 ? (
+        <div className="import-history-empty">Henüz tamamlanmış bir içe aktarım yok.</div>
+      ) : (
+        <div className="import-history-table-wrap">
+          <table className="import-table import-history-table">
+            <thead>
+              <tr>
+                <th>Tarih</th>
+                <th>Dosya</th>
+                <th>Format</th>
+                <th>Toplam</th>
+                <th>Eklenen</th>
+                <th>Repeat</th>
+                <th>Duplicate</th>
+                <th>Uyarı</th>
+                <th>Durum</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((item) => (
+                <tr key={item.batchId}>
+                  <td>{formatDate(item.completedAt)}</td>
+                  <td>
+                    <div className="import-history-file">{item.fileName}</div>
+                    <div className="import-history-sheet">{item.sheetName}</div>
+                  </td>
+                  <td>{item.format}</td>
+                  <td>{item.totalRows}</td>
+                  <td>{item.importedSubmissions}</td>
+                  <td>{item.repeatSubmissions}</td>
+                  <td>{item.exactDuplicates}</td>
+                  <td>{item.warningCount}</td>
+                  <td>
+                    <span className="decision-badge decision-new">{item.status}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </article>
   );
 }

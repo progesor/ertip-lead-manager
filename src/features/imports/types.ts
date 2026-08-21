@@ -82,6 +82,27 @@ export interface ImportPreview {
   rows: ImportPreviewRow[];
 }
 
+export interface CommitImportResult {
+  batchId: string;
+  summary: ImportPreviewSummary;
+}
+
+export interface ImportHistoryItem {
+  batchId: string;
+  fileName: string;
+  format: SourceFormat | "UNKNOWN";
+  sheetName: string;
+  completedAt: string | null;
+  status: string;
+  totalRows: number;
+  importedSubmissions: number;
+  exactDuplicates: number;
+  repeatSubmissions: number;
+  warningCount: number;
+  errorCount: number;
+  appVersion: string;
+}
+
 export interface CommandError {
   code: string;
   message: string;

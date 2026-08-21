@@ -1,7 +1,8 @@
 # 15 — Meta Form Product-Interest Specification
 
 **Decision date:** 2026-08-20  
-**Status:** Accepted product decision; Meta form update pending/being applied  
+**Export verification date:** 2026-08-21  
+**Status:** Accepted and verified against a real post-change Meta lead export  
 **Scope:** Product-interest question used by the lead form and the importer's canonical mapping
 
 ## 1. Goal
@@ -36,47 +37,73 @@ The application uses the stable internal codes. Display labels may be localized 
 
 ## 5. Multi-select semantics
 
-A prospect may select any useful combination. Examples:
+A prospect may select any useful combination. The application preserves all selected categories. There is no required primary product in V1.
 
-- Micromotor + FUE Punches
-- Long Hair FUE Solutions + Micromotor + FUE Punches
-- Implanters/Forceps + Furniture
+## 6. Verified export representation
 
-The application must preserve all selected categories. There is no required primary product in V1.
+The first real post-change `.xlsx` export was inspected on **2026-08-21**.
 
-## 6. Optional free-text detail field
+### Header behavior
 
-If the form allows an additional optional text question, recommended wording is:
+The form change did **not** create a new product-question header. The export still uses:
+
+`which_product_would_you_like_to_receive_more_information_about?`
+
+This means legacy free-text and new structured answers coexist under the same source header.
+
+### Structured machine values
+
+| Form label | Verified source machine value | Canonical code |
+|---|---|---|
+| FUE Micromotor Systems | `fue_micromotor_systems` | `FUE_MICROMOTOR_SYSTEMS` |
+| Long Hair FUE Solutions | `long_hair_fue_solutions` | `LONG_HAIR_FUE_SOLUTIONS` |
+| FUE Punches | `fue_punches` | `FUE_PUNCHES` |
+| Implanters, Forceps & Surgical Instruments | `implanters,_forceps_&_surgical_instruments` | `IMPLANTERS_FORCEPS_SURGICAL_INSTRUMENTS` |
+| Medical Chairs & Clinic Furniture | `medical_chairs_&_clinic_furniture` | `MEDICAL_CHAIRS_CLINIC_FURNITURE` |
+| Other Products / General Information | `other_products_/_general_information` | `OTHER_GENERAL_INFORMATION` |
+
+### Multiple-selection serialization
+
+Multiple selected values are joined using the pipe character:
+
+`|`
+
+Example:
+
+```text
+fue_micromotor_systems|fue_punches|long_hair_fue_solutions
+```
+
+A real exported row demonstrated all six selections in one value, confirming that pipe separation is stable across several tokens.
+
+### Important delimiter rule
+
+Do **not** comma-split product answers. The machine value:
+
+`implanters,_forceps_&_surgical_instruments`
+
+contains commas inside a single valid selection.
+
+Structured product parsing therefore splits only on `|`, then maps each complete token.
+
+## 7. Optional free-text detail field
+
+If the form later adds an additional optional text question, recommended wording remains:
 
 **Is there a specific product, model or information you are looking for?**  
 *Optional*
 
 This field is supplementary detail only. It must not replace or override the structured product-interest multi-select.
 
-## 7. Legacy compatibility
+The 2026-08-21 export used for verification did not establish a separate optional-detail header, so no such field is canonical yet.
 
-Historical exports use the known free-text header:
+## 8. Legacy compatibility
 
-`which_product_would_you_like_to_receive_more_information_about?`
-
-Examples include `micromotor`, `Long hair micro motor`, `Hair grafts`, `All`, `yes`, `Information`, and non-semantic question marks. These historical rows remain valid source records.
+Historical exports use the same product header and include values such as `micromotor`, `Long hair micro motor`, `Hair grafts`, `All`, `yes`, `Information`, and non-semantic question marks. These historical rows remain valid source records.
 
 Legacy normalization is deterministic and conservative. A legacy phrase may map to more than one canonical category when that meaning is clear. Raw source text is never changed.
 
-## 8. Pending verification after form deployment
-
-The following must be captured from the first real Excel export produced by the updated Meta form:
-
-- exact machine/header name of the new multi-select question;
-- exact representation of one selected value;
-- exact representation of two or more selected values;
-- escaping/quoting behavior;
-- behavior when `Other Products / General Information` is selected;
-- whether the optional free-text detail field receives its own stable header.
-
-**Do not assume comma-separated values.** One canonical label contains commas (`Implanters, Forceps & Surgical Instruments`), so naive comma splitting is explicitly prohibited.
-
-Once verified, update `docs/05_EXCEL_IMPORT_CONTRACT.md` and add a sanitized multi-select `.xlsx` fixture before finalizing M2 parsing logic.
+The importer must distinguish recognized structured machine tokens from legacy free text by value rules, not by header alone.
 
 ## 9. Analytics semantics
 

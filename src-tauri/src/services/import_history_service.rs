@@ -42,9 +42,9 @@ impl ImportHistoryService {
 
 fn map_record(record: ImportHistoryRecord) -> ImportHistoryItem {
     ImportHistoryItem {
-        format: infer_format(&record.file_name),
         batch_id: record.id,
         file_name: record.file_name,
+        format: record.file_format,
         sheet_name: record.sheet_name,
         completed_at: record.completed_at,
         status: record.status,
@@ -55,25 +55,5 @@ fn map_record(record: ImportHistoryRecord) -> ImportHistoryItem {
         warning_count: record.warning_count,
         error_count: record.error_count,
         app_version: record.app_version,
-    }
-}
-
-fn infer_format(file_name: &str) -> String {
-    match file_name.rsplit('.').next().map(str::to_ascii_lowercase) {
-        Some(extension) if extension == "xlsx" => "XLSX".to_string(),
-        Some(extension) if extension == "csv" => "CSV".to_string(),
-        _ => "UNKNOWN".to_string(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::infer_format;
-
-    #[test]
-    fn infers_supported_import_format_from_file_name() {
-        assert_eq!(infer_format("Leads Export.XLSX"), "XLSX");
-        assert_eq!(infer_format("leads.csv"), "CSV");
-        assert_eq!(infer_format("leads.txt"), "UNKNOWN");
     }
 }

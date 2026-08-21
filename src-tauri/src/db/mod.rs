@@ -54,7 +54,6 @@ impl Database {
         })
     }
 
-    #[cfg(test)]
     pub fn pool(&self) -> &SqlitePool {
         &self.pool
     }

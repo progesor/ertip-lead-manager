@@ -8,9 +8,16 @@ Create a stable application shell and persistence foundation without prematurely
 
 **Branch:** `feat/m1-foundation`  
 **Pull request:** #2  
-**Status:** implementation complete for the first foundation pass; Windows runtime/build verification is pending before this milestone can be marked complete.
+**Status:** **PASS**
 
-Do not mark acceptance items complete based only on source review. M1 Definition of Done still requires frontend tests, Rust tests, a Windows Tauri launch, database restart persistence, and a Windows package/build check.
+Verified on 2026-08-21:
+
+- frontend lint/test/build passed locally and in CI;
+- Rust migration/repository/error tests passed locally and on Windows CI;
+- Tauri dev application launched successfully on the Windows development PC;
+- Settings diagnostics returned app version `0.1.0`, schema version `1`, and a stable SQLite path;
+- application restart reused the same local database path/schema;
+- Windows NSIS debug package build passed in GitHub Actions.
 
 ## Deliverables
 
@@ -43,7 +50,7 @@ Do not mark acceptance items complete based only on source review. M1 Definition
 
 - SQLx SQLite connection
 - migration runner
-- initial tables from `04_DATA_MODEL.md` (may stage less-used tables if documented)
+- initial tables from `04_DATA_MODEL.md`
 - foreign keys enabled
 - repository/service boundaries
 - test DB helper
@@ -55,7 +62,6 @@ Settings/About displays:
 - app version
 - DB path
 - schema version
-- optional “Open data folder”
 
 ## Tests
 
@@ -64,21 +70,27 @@ Settings/About displays:
 - migration integration test
 - simple DB write/read repository test
 - command error serialization test
+- Windows CI package build
 
 ## Non-goals
 
-- no production Excel importer yet;
+- no production lead file importer yet;
 - no dashboard analytics yet;
 - no pipeline behavior yet;
 - no Google/Meta integration.
 
 ## Acceptance criteria
 
-- [ ] `npm/pnpm` frontend tests pass.
-- [ ] `cargo test` passes.
-- [ ] Tauri dev app launches on Windows.
-- [ ] packaged/dev app creates/opens SQLite DB in correct app data directory.
-- [ ] migrations apply from empty DB.
-- [ ] app restarts without recreating/loss of DB.
-- [ ] navigation shell works.
+- [x] `npm` frontend tests pass.
+- [x] `cargo test` passes.
+- [x] Tauri dev app launches on Windows.
+- [x] packaged/dev app creates/opens SQLite DB in correct app data directory.
+- [x] migrations apply from empty DB.
+- [x] app restarts without recreating/loss of DB.
+- [x] navigation shell works.
 - [x] README includes development commands.
+- [x] Windows NSIS debug package build passes in CI.
+
+## Exit
+
+M1 is complete. Development continues in M2 on manual `.xlsx` / `.csv` import, normalization and deduplication.

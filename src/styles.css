@@ -423,11 +423,11 @@ a:focus-visible {
   grid-column: 1 / -1;
 }
 
-.mono-value {
+.diagnostics-grid dd.mono-value {
   overflow-wrap: anywhere;
   font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
-  font-size: 11px !important;
-  font-weight: 500 !important;
+  font-size: 11px;
+  font-weight: 500;
 }
 
 @media (max-width: 1180px) {

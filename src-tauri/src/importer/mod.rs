@@ -28,15 +28,57 @@ pub fn parse_file(path: &Path) -> Result<SourceTable, AppError> {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     use super::parse_file;
     use crate::error::AppError;
+    use crate::importer::headers::PRODUCT_INTEREST_HEADER;
+
+    fn fixture(name: &str) -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("fixtures")
+            .join(name)
+    }
 
     #[test]
     fn unsupported_extension_is_rejected_before_parsing() {
         let error = parse_file(Path::new("leads.txt")).expect_err("reject unsupported file");
 
         assert!(matches!(error, AppError::UnsupportedFileType(_)));
+    }
+
+    #[test]
+    fn equivalent_multiselect_xlsx_and_csv_produce_equivalent_canonical_fields() {
+        let csv = parse_file(&fixture("leads_sample_multiselect_sanitized.csv"))
+            .expect("parse CSV fixture");
+        let xlsx = parse_file(&fixture("leads_sample_multiselect_sanitized.xlsx"))
+            .expect("parse XLSX fixture");
+
+        assert_eq!(csv.rows.len(), xlsx.rows.len());
+
+        let compared_headers = [
+            "id",
+            "created_time",
+            "full_name",
+            "email",
+            "phone_number",
+            "country",
+            "lead_status",
+            PRODUCT_INTEREST_HEADER,
+            "Status",
+            "İletişime Geçme Tarihi",
+        ];
+
+        for (csv_row, xlsx_row) in csv.rows.iter().zip(&xlsx.rows) {
+            for header in compared_headers {
+                assert_eq!(
+                    csv_row.get(header),
+                    xlsx_row.get(header),
+                    "adapter mismatch for header {header} on source row {}",
+                    csv_row.row_number
+                );
+            }
+        }
     }
 }

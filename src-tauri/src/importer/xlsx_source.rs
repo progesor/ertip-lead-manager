@@ -92,6 +92,7 @@ mod tests {
     use std::path::PathBuf;
 
     use super::parse_xlsx;
+    use crate::importer::headers::PRODUCT_INTEREST_HEADER;
     use crate::importer::source::SourceFormat;
 
     fn fixture(name: &str) -> PathBuf {
@@ -111,5 +112,25 @@ mod tests {
         assert!(!table.rows.is_empty());
         assert!(table.rows[0].get("id").is_some());
         assert!(table.rows[0].get("created_time").is_some());
+    }
+
+    #[test]
+    fn parses_verified_multiselect_xlsx_without_losing_pipe_values_or_timestamp_text() {
+        let table = parse_xlsx(&fixture("leads_sample_multiselect_sanitized.xlsx"))
+            .expect("parse multi-select XLSX fixture");
+
+        assert_eq!(table.rows.len(), 6);
+        assert_eq!(
+            table.rows[0].get("created_time"),
+            Some("2026-08-20T10:00:00+03:00")
+        );
+        assert_eq!(
+            table.rows[2].get(PRODUCT_INTEREST_HEADER),
+            Some("fue_micromotor_systems|fue_punches|long_hair_fue_solutions")
+        );
+        assert_eq!(
+            table.rows[3].get(PRODUCT_INTEREST_HEADER),
+            Some("fue_micromotor_systems|other_products_/_general_information|medical_chairs_&_clinic_furniture|implanters,_forceps_&_surgical_instruments|fue_punches|long_hair_fue_solutions")
+        );
     }
 }

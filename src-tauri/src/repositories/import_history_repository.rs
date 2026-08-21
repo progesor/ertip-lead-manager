@@ -6,6 +6,7 @@ use crate::error::AppError;
 pub struct ImportHistoryRecord {
     pub id: String,
     pub file_name: String,
+    pub file_format: String,
     pub sheet_name: String,
     pub completed_at: Option<String>,
     pub status: String,
@@ -34,6 +35,7 @@ impl ImportHistoryRepository {
             SELECT
                 id,
                 file_name,
+                file_format,
                 sheet_name,
                 completed_at,
                 status,
@@ -65,7 +67,7 @@ mod tests {
     use crate::db::Database;
 
     #[tokio::test]
-    async fn returns_recent_batches_newest_first() {
+    async fn returns_recent_batches_newest_first_with_persisted_format() {
         let database = Database::connect_memory().await.expect("open database");
         let older = "2026-08-20T10:00:00.000Z";
         let newer = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
@@ -93,6 +95,8 @@ mod tests {
 
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0].id, "batch-new");
+        assert_eq!(rows[0].file_format, "XLSX");
         assert_eq!(rows[1].id, "batch-old");
+        assert_eq!(rows[1].file_format, "CSV");
     }
 }

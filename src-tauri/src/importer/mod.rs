@@ -2,6 +2,7 @@ mod csv_source;
 pub mod headers;
 pub mod identity;
 pub mod normalization;
+pub mod planning;
 pub mod product_interest;
 pub mod source;
 mod xlsx_source;

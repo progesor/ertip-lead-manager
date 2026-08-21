@@ -38,6 +38,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::diagnostics::get_app_diagnostics,
             commands::imports::preview_import,
+            commands::imports::commit_import,
         ])
         .run(tauri::generate_context!())
         .expect("Ertip Lead Manager çalıştırılamadı");

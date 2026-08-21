@@ -4,26 +4,26 @@ Files in this folder must contain only synthetic or sanitized data.
 
 ## Legacy fixtures
 
-- `leads_sample_sanitized.csv` mirrors the legacy known column layout and intentionally includes identity/import edge cases.
-- `leads_sample_sanitized.xlsx` is the legacy XLSX counterpart used for Calamine integration coverage.
+- `leads_sample_sanitized.csv`
+- `leads_sample_sanitized.xlsx`
 
-## Verified structured multi-select fixture
+These mirror the legacy free-text product-answer layout and contain identity/import edge cases.
 
-`leads_sample_multiselect_sanitized.csv` mirrors the post-change schema observed on **2026-08-21** without containing any real customer data.
+## Verified multi-select fixtures
 
-It intentionally covers:
+- `leads_sample_multiselect_sanitized.csv`
+- `leads_sample_multiselect_sanitized.xlsx`
 
-- the unchanged product-question header;
-- a structured single selection (`fue_punches`);
-- a structured three-selection value joined with `|`;
-- all six verified machine values in one quoted CSV field;
-- the comma-containing implanter/forceps machine token;
-- `other_products_/_general_information`;
-- agency-added `Status` and `İletişime Geçme Tarihi` columns that must be ignored as CRM inputs;
-- source `lead_status=CREATED` which remains raw metadata only;
-- a repeat contact with a new external ID;
-- an exact duplicate external ID represented with a different timestamp offset.
+These mirror the post-change Meta export observed on 2026-08-21 using synthetic data only. They intentionally cover:
 
-CSV quoting is intentional: one product token contains commas. Parser tests must use a standards-compliant CSV parser rather than manual comma splitting.
+- a legacy free-text product answer;
+- one structured product selection;
+- three structured selections separated by `|`;
+- all six structured selections, including the machine value containing commas;
+- agency-maintained `Status` / `İletişime Geçme Tarihi` columns;
+- a repeat contact with a new external lead ID;
+- an exact duplicate external lead ID represented with a different timezone offset.
+
+The XLSX fixture stores source timestamps as text so Calamine receives the same ISO-8601 representation as the real export contract rather than spreadsheet date serials.
 
 Never replace these fixtures with a real customer export.

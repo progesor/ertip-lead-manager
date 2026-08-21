@@ -11,6 +11,7 @@ pub enum ProductCode {
     ImplantersForcepsSurgicalInstruments,
     MedicalChairsClinicFurniture,
     OtherGeneralInformation,
+    Unknown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

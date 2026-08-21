@@ -5,8 +5,9 @@ use sqlx::SqlitePool;
 
 use crate::error::AppError;
 use crate::importer::headers::{is_agency_ignored_crm_column, PRODUCT_INTEREST_HEADER};
-use crate::importer::identity::{IdentityDecision, IdentityEngine};
-use crate::importer::normalization::{normalize_source_row, NormalizedSubmission};
+use crate::importer::identity::IdentityDecision;
+use crate::importer::normalization::NormalizedSubmission;
+use crate::importer::planning::{build_import_plan, ImportPlanSummary};
 use crate::importer::source::SourceFormat;
 use crate::importer::parse_file;
 use crate::repositories::import_preview_repository::ImportPreviewRepository;
@@ -22,18 +23,7 @@ pub struct ImportPreviewSource {
     pub ignored_agency_columns: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, PartialEq, Eq, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportPreviewSummary {
-    pub total_rows: usize,
-    pub importable_submissions: usize,
-    pub new_contacts: usize,
-    pub repeat_submissions: usize,
-    pub exact_duplicates: usize,
-    pub identity_conflicts: usize,
-    pub row_errors: usize,
-    pub warning_count: usize,
-}
+pub type ImportPreviewSummary = ImportPlanSummary;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -71,68 +61,43 @@ impl ImportPreviewService {
     pub async fn preview(&self, path: &Path) -> Result<ImportPreview, AppError> {
         let table = parse_file(path)?;
         let snapshot = self.repository.load_identity_snapshot().await?;
-        let mut identity = IdentityEngine::new(snapshot.external_lead_ids, snapshot.contacts);
-        let mut rows = Vec::with_capacity(table.rows.len());
-        let mut summary = ImportPreviewSummary {
-            total_rows: table.rows.len(),
-            ..ImportPreviewSummary::default()
-        };
+        let plan = build_import_plan(
+            &table,
+            snapshot.external_lead_ids,
+            snapshot.contacts,
+            |normalized| format!("preview:{}", normalized.external_lead_id.trim()),
+        );
 
-        for source_row in &table.rows {
-            let normalized = normalize_source_row(source_row);
-            summary.warning_count += normalized.warnings.len();
-
-            let decision = identity.decide(&normalized);
-            match &decision {
-                IdentityDecision::NewContact => {
-                    summary.new_contacts += 1;
-                    summary.importable_submissions += 1;
-
-                    let provisional_contact_id = format!(
-                        "preview:{}",
-                        normalized.external_lead_id.trim()
-                    );
-                    identity.register_contact_identity(
-                        provisional_contact_id,
-                        normalized.normalized_email.as_deref(),
-                        normalized.normalized_phone.as_deref(),
-                    );
-                }
-                IdentityDecision::RepeatContact { contact_id, .. } => {
-                    summary.repeat_submissions += 1;
-                    summary.importable_submissions += 1;
-
-                    identity.register_contact_identity(
-                        contact_id.clone(),
-                        normalized.normalized_email.as_deref(),
-                        normalized.normalized_phone.as_deref(),
-                    );
-                }
-                IdentityDecision::ExactDuplicateSubmission { .. } => {
-                    summary.exact_duplicates += 1;
-                }
-                IdentityDecision::IdentityConflictReview { .. } => {
-                    summary.identity_conflicts += 1;
-                }
-                IdentityDecision::RowError { .. } => {
-                    summary.row_errors += 1;
-                }
-            }
-
-            rows.push(ImportPreviewRow {
-                row_number: source_row.row_number,
-                full_name: source_row.get("full_name").unwrap_or_default().to_string(),
-                raw_email: source_row.get("email").unwrap_or_default().to_string(),
-                raw_phone: source_row.get("phone_number").unwrap_or_default().to_string(),
-                raw_country: source_row.get("country").unwrap_or_default().to_string(),
-                raw_product_answer: source_row
+        let rows = plan
+            .rows
+            .into_iter()
+            .map(|planned| ImportPreviewRow {
+                row_number: planned.source.row_number,
+                full_name: planned
+                    .source
+                    .get("full_name")
+                    .unwrap_or_default()
+                    .to_string(),
+                raw_email: planned.source.get("email").unwrap_or_default().to_string(),
+                raw_phone: planned
+                    .source
+                    .get("phone_number")
+                    .unwrap_or_default()
+                    .to_string(),
+                raw_country: planned
+                    .source
+                    .get("country")
+                    .unwrap_or_default()
+                    .to_string(),
+                raw_product_answer: planned
+                    .source
                     .get(PRODUCT_INTEREST_HEADER)
                     .unwrap_or_default()
                     .to_string(),
-                normalized,
-                decision,
-            });
-        }
+                normalized: planned.normalized,
+                decision: planned.decision,
+            })
+            .collect();
 
         let ignored_agency_columns = table
             .headers
@@ -150,7 +115,7 @@ impl ImportPreviewService {
                 column_count: table.headers.len(),
                 ignored_agency_columns,
             },
-            summary,
+            summary: plan.summary,
             rows,
         })
     }

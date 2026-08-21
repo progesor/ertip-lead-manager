@@ -2,6 +2,7 @@ mod commands;
 mod db;
 mod domain;
 mod error;
+mod importer;
 mod repositories;
 mod services;
 mod state;

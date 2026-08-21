@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use calamine::{open_workbook_auto, Data, Reader};
+use calamine::{open_workbook_auto, Data, ExcelDateTime, ExcelDateTimeType, Reader};
 
 use crate::error::AppError;
 
-use super::headers::has_required_headers;
+use super::headers::{has_required_headers, normalize_header};
 use super::source::{SourceFormat, SourceRow, SourceTable};
 
 const MAX_HEADER_SCAN_ROWS: usize = 50;
@@ -24,7 +24,15 @@ pub fn parse_xlsx(path: &Path) -> Result<SourceTable, AppError> {
         let mut rows = Vec::new();
 
         for (offset, row) in range.rows().skip(header_row_index + 1).enumerate() {
-            let values = row.iter().map(cell_to_string).collect::<Vec<_>>();
+            let values = headers
+                .iter()
+                .enumerate()
+                .map(|(column, header)| {
+                    row.get(column)
+                        .map(|cell| source_cell_to_string(header, cell))
+                        .unwrap_or_default()
+                })
+                .collect::<Vec<_>>();
 
             if values.iter().all(|value| value.trim().is_empty()) {
                 continue;
@@ -32,13 +40,8 @@ pub fn parse_xlsx(path: &Path) -> Result<SourceTable, AppError> {
 
             let fields = headers
                 .iter()
-                .enumerate()
-                .map(|(column, header)| {
-                    (
-                        header.clone(),
-                        values.get(column).cloned().unwrap_or_default(),
-                    )
-                })
+                .cloned()
+                .zip(values.into_iter())
                 .collect::<BTreeMap<_, _>>();
 
             rows.push(SourceRow::new(header_row_index + offset + 2, fields));
@@ -74,18 +77,42 @@ fn find_header_row(range: &calamine::Range<Data>) -> Option<(usize, Vec<String>)
         })
 }
 
+fn source_cell_to_string(header: &str, cell: &Data) -> String {
+    if normalize_header(header) == "created_time" {
+        match cell {
+            Data::Float(value) => return excel_serial_to_iso(*value),
+            Data::Int(value) => return excel_serial_to_iso(*value as f64),
+            _ => {}
+        }
+    }
+
+    cell_to_string(cell)
+}
+
 fn cell_to_string(cell: &Data) -> String {
     match cell {
         Data::Empty => String::new(),
-        Data::DateTime(value) if value.is_datetime() => {
-            let (year, month, day, hour, minute, second, millis) = value.to_ymd_hms_milli();
-            format!(
-                "{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{millis:03}Z"
-            )
-        }
+        Data::DateTime(value) if value.is_datetime() => excel_datetime_to_iso(*value),
         Data::DateTimeIso(value) | Data::DurationIso(value) => value.clone(),
         _ => cell.to_string(),
     }
+}
+
+fn excel_serial_to_iso(value: f64) -> String {
+    // Numeric fallback is restricted to the canonical created_time column. Meta exports
+    // normally provide an RFC3339 string; this also tolerates workbooks that store the
+    // same instant as a native/serial Excel datetime. A naked serial carries no timezone,
+    // so the fallback is represented as UTC.
+    excel_datetime_to_iso(ExcelDateTime::new(
+        value,
+        ExcelDateTimeType::DateTime,
+        false,
+    ))
+}
+
+fn excel_datetime_to_iso(value: ExcelDateTime) -> String {
+    let (year, month, day, hour, minute, second, millis) = value.to_ymd_hms_milli();
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{millis:03}Z")
 }
 
 fn file_name(path: &Path) -> String {

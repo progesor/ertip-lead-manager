@@ -4,6 +4,7 @@ use serde::Serialize;
 use sqlx::SqlitePool;
 
 use crate::error::AppError;
+use crate::repositories::lead_crm_repository::{LeadCrmRepository, LeadNoteRecord};
 use crate::repositories::lead_detail_repository::{
     LeadActivityRecord, LeadDetailRepository, LeadDetailSubmissionRecord, LeadQualityIssueRecord,
 };
@@ -76,22 +77,34 @@ pub struct LeadDetailActivity {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct LeadDetailNote {
+    pub id: String,
+    pub body: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LeadDetailResponse {
     pub contact: LeadDetailContact,
     pub submissions: Vec<LeadDetailSubmission>,
     pub quality_issues: Vec<LeadDetailQualityIssue>,
+    pub notes: Vec<LeadDetailNote>,
     pub activities: Vec<LeadDetailActivity>,
 }
 
 #[derive(Clone)]
 pub struct LeadDetailService {
     repository: LeadDetailRepository,
+    crm_repository: LeadCrmRepository,
 }
 
 impl LeadDetailService {
     pub fn new(pool: SqlitePool) -> Self {
         Self {
-            repository: LeadDetailRepository::new(pool),
+            repository: LeadDetailRepository::new(pool.clone()),
+            crm_repository: LeadCrmRepository::new(pool),
         }
     }
 
@@ -117,6 +130,14 @@ impl LeadDetailService {
             .await?
             .into_iter()
             .map(map_quality_issue)
+            .collect();
+
+        let notes = self
+            .crm_repository
+            .notes(contact_id)
+            .await?
+            .into_iter()
+            .map(map_note)
             .collect();
 
         let activities = self
@@ -146,6 +167,7 @@ impl LeadDetailService {
             },
             submissions,
             quality_issues,
+            notes,
             activities,
         }))
     }
@@ -200,6 +222,15 @@ fn map_quality_issue(record: LeadQualityIssueRecord) -> LeadDetailQualityIssue {
         status: record.status,
         created_at: record.created_at,
         resolved_at: record.resolved_at,
+    }
+}
+
+fn map_note(record: LeadNoteRecord) -> LeadDetailNote {
+    LeadDetailNote {
+        id: record.id,
+        body: record.body,
+        created_at: record.created_at,
+        updated_at: record.updated_at,
     }
 }
 

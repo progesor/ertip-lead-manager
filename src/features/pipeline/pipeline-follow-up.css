@@ -1,0 +1,44 @@
+.pipeline-follow-up {
+  display: flex;
+  min-height: 27px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+  margin-top: 8px;
+  padding: 0 7px;
+  border: 1px solid #d9e3ec;
+  border-radius: 7px;
+  background: #f7fafc;
+  color: #5d7184;
+  font-size: 8px;
+  font-weight: 750;
+}
+
+.pipeline-follow-up strong {
+  display: inline-flex;
+  min-width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgb(78 111 140 / 9%);
+  font-size: 8px;
+}
+
+.pipeline-follow-up-overdue {
+  border-color: #ebcaca;
+  background: #fff5f5;
+  color: #a05252;
+}
+
+.pipeline-follow-up-today {
+  border-color: #ecd3a8;
+  background: #fff9eb;
+  color: #96631c;
+}
+
+.pipeline-follow-up-upcoming {
+  border-color: #cbddea;
+  background: #f3f8fc;
+  color: #4f7290;
+}

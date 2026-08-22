@@ -39,6 +39,7 @@ pub struct LeadListRecord {
     pub latest_submission_at: Option<String>,
     pub submission_count: i64,
     pub product_codes: Vec<String>,
+    pub platforms: Vec<String>,
     pub warning_count: i64,
     pub warning_types: Vec<String>,
 }
@@ -74,6 +75,12 @@ impl LeadWorkspaceRepository {
                       ON spi.lead_submission_id = s.id
                     WHERE s.lead_contact_id = c.id
                 ), '') AS product_codes,
+                COALESCE((
+                    SELECT GROUP_CONCAT(DISTINCT LOWER(TRIM(s.platform)))
+                    FROM lead_submissions s
+                    WHERE s.lead_contact_id = c.id
+                      AND TRIM(COALESCE(s.platform, '')) <> ''
+                ), '') AS platforms,
                 (
                     SELECT COUNT(*)
                     FROM lead_data_quality_issues q
@@ -81,7 +88,7 @@ impl LeadWorkspaceRepository {
                       AND q.status = 'OPEN'
                 ) AS warning_count,
                 COALESCE((
-                    SELECT GROUP_CONCAT(DISTINCT q.issue_type)
+                    SELECT GROUP_CONCAT(q.issue_type)
                     FROM lead_data_quality_issues q
                     WHERE q.lead_contact_id = c.id
                       AND q.status = 'OPEN'
@@ -100,6 +107,7 @@ impl LeadWorkspaceRepository {
             .into_iter()
             .map(|row| {
                 let raw_products: String = row.get("product_codes");
+                let raw_platforms: String = row.get("platforms");
                 let raw_warning_types: String = row.get("warning_types");
                 LeadListRecord {
                     id: row.get("id"),
@@ -111,6 +119,7 @@ impl LeadWorkspaceRepository {
                     latest_submission_at: row.get("latest_submission_at"),
                     submission_count: row.get("submission_count"),
                     product_codes: split_group_concat(&raw_products),
+                    platforms: split_group_concat(&raw_platforms),
                     warning_count: row.get("warning_count"),
                     warning_types: split_group_concat(&raw_warning_types),
                 }
@@ -118,6 +127,21 @@ impl LeadWorkspaceRepository {
             .collect();
 
         Ok((records, total))
+    }
+
+    pub async fn country_codes(&self) -> Result<Vec<String>, AppError> {
+        let rows = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT DISTINCT UPPER(TRIM(country_code))
+            FROM lead_contacts
+            WHERE LENGTH(TRIM(COALESCE(country_code, ''))) = 2
+            ORDER BY UPPER(TRIM(country_code)) ASC
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
     }
 
     async fn count(&self, query: &LeadListQuery) -> Result<i64, AppError> {
@@ -257,16 +281,17 @@ mod tests {
         .await
         .expect("insert batch");
 
-        for (id, contact_id, external_id) in [
-            ("submission-a1", "contact-a", "l:external-a1"),
-            ("submission-a2", "contact-a", "l:external-a2"),
-            ("submission-b1", "contact-b", "l:external-b1"),
+        for (id, contact_id, external_id, platform) in [
+            ("submission-a1", "contact-a", "l:external-a1", "facebook"),
+            ("submission-a2", "contact-a", "l:external-a2", "instagram"),
+            ("submission-b1", "contact-b", "l:external-b1", "facebook"),
         ] {
-            sqlx::query("INSERT INTO lead_submissions (id, lead_contact_id, import_batch_id, external_lead_id, source_created_at_raw, raw_payload_json, created_at) VALUES (?, ?, 'batch', ?, ?, '{}', ?)")
+            sqlx::query("INSERT INTO lead_submissions (id, lead_contact_id, import_batch_id, external_lead_id, source_created_at_raw, platform, raw_payload_json, created_at) VALUES (?, ?, 'batch', ?, ?, ?, '{}', ?)")
                 .bind(id)
                 .bind(contact_id)
                 .bind(external_id)
                 .bind(&now)
+                .bind(platform)
                 .bind(&now)
                 .execute(database.pool())
                 .await
@@ -280,11 +305,14 @@ mod tests {
             .await
             .expect("insert products");
 
-        sqlx::query("INSERT INTO lead_data_quality_issues (id, lead_contact_id, issue_type, severity, details_json, status, created_at) VALUES ('warning-a', 'contact-a', 'UNKNOWN_PRODUCT', 'WARNING', '{}', 'OPEN', ?)")
-            .bind(&now)
-            .execute(database.pool())
-            .await
-            .expect("insert warning");
+        for warning_id in ["warning-a1", "warning-a2"] {
+            sqlx::query("INSERT INTO lead_data_quality_issues (id, lead_contact_id, issue_type, severity, details_json, status, created_at) VALUES (?, 'contact-a', 'UNKNOWN_PRODUCT', 'WARNING', '{}', 'OPEN', ?)")
+                .bind(warning_id)
+                .bind(&now)
+                .execute(database.pool())
+                .await
+                .expect("insert warning");
+        }
 
         let repository = LeadWorkspaceRepository::new(database.pool().clone());
         let query = LeadListQuery {
@@ -305,8 +333,12 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].id, "contact-a");
         assert_eq!(rows[0].submission_count, 2);
-        assert_eq!(rows[0].warning_count, 1);
-        assert_eq!(rows[0].warning_types, vec!["UNKNOWN_PRODUCT"]);
+        assert_eq!(rows[0].warning_count, 2);
+        assert_eq!(rows[0].warning_types, vec!["UNKNOWN_PRODUCT", "UNKNOWN_PRODUCT"]);
         assert_eq!(rows[0].product_codes, vec!["FUE_PUNCHES"]);
+        assert_eq!(rows[0].platforms, vec!["facebook", "instagram"]);
+
+        let countries = repository.country_codes().await.expect("country options");
+        assert_eq!(countries, vec!["GB", "TR"]);
     }
 }

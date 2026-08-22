@@ -33,8 +33,10 @@ const productLabels: Record<ProductCode, string> = {
   IMPLANTERS_FORCEPS_SURGICAL_INSTRUMENTS: "Implanter / Forceps",
   MEDICAL_CHAIRS_CLINIC_FURNITURE: "Medikal Mobilya",
   OTHER_GENERAL_INFORMATION: "Diğer / Genel Bilgi",
-  UNKNOWN: "Bilinmiyor",
+  UNKNOWN: "Bilinmiyor / Legacy",
 };
+
+const productOptions = Object.entries(productLabels) as Array<[ProductCode, string]>;
 
 const warningLabels: Record<DataQualityIssueType, string> = {
   INVALID_EMAIL: "Geçersiz e-posta",
@@ -52,6 +54,7 @@ const activityLabels: Record<string, string> = {
   NOTE_CREATED: "Not eklendi",
   NOTE_UPDATED: "Not güncellendi",
   NOTE_DELETED: "Not silindi",
+  PRODUCT_INTEREST_CHANGED: "Ürün ilgisi düzeltildi",
 };
 
 const regionNames = new Intl.DisplayNames(["tr"], { type: "region" });
@@ -104,18 +107,27 @@ function commandErrorMessage(error: unknown) {
 }
 
 function activityDetail(activity: LeadDetailActivity) {
-  if (activity.activityType !== "STATUS_CHANGED") return null;
-
   try {
     const payload = JSON.parse(activity.payloadJson) as {
       fromStatus?: LeadStatus;
       toStatus?: LeadStatus;
+      productCode?: ProductCode;
+      included?: boolean;
     };
-    if (!payload.fromStatus || !payload.toStatus) return null;
-    return `${statusLabels[payload.fromStatus] ?? payload.fromStatus} → ${statusLabels[payload.toStatus] ?? payload.toStatus}`;
+
+    if (activity.activityType === "STATUS_CHANGED" && payload.fromStatus && payload.toStatus) {
+      return `${statusLabels[payload.fromStatus] ?? payload.fromStatus} → ${statusLabels[payload.toStatus] ?? payload.toStatus}`;
+    }
+
+    if (activity.activityType === "PRODUCT_INTEREST_CHANGED" && payload.productCode) {
+      const label = productLabels[payload.productCode] ?? payload.productCode;
+      return `${label} · ${payload.included ? "eklendi" : "kaldırıldı"}`;
+    }
   } catch {
     return null;
   }
+
+  return null;
 }
 
 export function LeadDetailPage() {
@@ -170,6 +182,30 @@ export function LeadDetailPage() {
         newStatus: statusDraft,
       });
       setNotice(changed ? `Durum ${statusLabels[statusDraft]} olarak güncellendi.` : "Durum zaten günceldi.");
+      await refreshDetail();
+    } catch (mutationError) {
+      setError(commandErrorMessage(mutationError));
+    } finally {
+      setMutating(null);
+    }
+  }
+
+  async function setProductInterest(productCode: ProductCode, included: boolean) {
+    if (!detail) return;
+    setMutating(`product:${productCode}`);
+    setError(null);
+    setNotice(null);
+    try {
+      const changed = await invoke<boolean>("set_lead_product_interest", {
+        contactId: detail.contact.id,
+        productCode,
+        included,
+      });
+      setNotice(
+        changed
+          ? `${productLabels[productCode]} ${included ? "etkin ürün ilgilerine eklendi" : "etkin ürün ilgilerinden kaldırıldı"}.`
+          : "Ürün ilgisi zaten bu durumdaydı.",
+      );
       await refreshDetail();
     } catch (mutationError) {
       setError(commandErrorMessage(mutationError));
@@ -279,6 +315,7 @@ export function LeadDetailPage() {
 
   const { contact } = detail;
   const openIssues = detail.qualityIssues.filter((issue) => issue.status === "OPEN");
+  const overrideByProduct = new Map(contact.productOverrides.map((override) => [override.productCode, override]));
 
   return (
     <section className="page-stack lead-detail-page">
@@ -343,17 +380,53 @@ export function LeadDetailPage() {
           <div className="panel-heading">
             <div>
               <h2>Ürün İlgileri</h2>
-              <p>Tüm submission'lardan birleştirilmiş görünüm.</p>
+              <p>Kaynak seçimleri değişmeden kalır; manuel düzeltmeler etkin görünümün üzerine uygulanır.</p>
             </div>
+            {contact.productOverrides.length > 0 ? <span className="placeholder-pill">Manuel düzeltme var</span> : null}
           </div>
-          <div className="lead-product-list">
+
+          <div className="lead-product-list lead-effective-products">
             {contact.productInterests.length > 0 ? (
               contact.productInterests.map((product) => (
                 <span className="lead-product-chip" key={product}>{productLabels[product] ?? product}</span>
               ))
             ) : (
-              <span className="lead-muted">Ürün ilgisi yok.</span>
+              <span className="lead-muted">Etkin ürün ilgisi yok.</span>
             )}
+          </div>
+
+          <div className="lead-product-editor">
+            {productOptions.map(([productCode, label]) => {
+              const included = contact.productInterests.includes(productCode);
+              const automatic = contact.automaticProductInterests.includes(productCode);
+              const override = overrideByProduct.get(productCode);
+              const busy = mutating === `product:${productCode}`;
+              let sourceLabel = automatic ? "Meta / Import" : "Kaynakta yok";
+              let sourceTone = automatic ? "source" : "none";
+
+              if (override?.action === "ADD") {
+                sourceLabel = "Manuel eklendi";
+                sourceTone = "added";
+              } else if (override?.action === "REMOVE") {
+                sourceLabel = "Manuel kaldırıldı";
+                sourceTone = "removed";
+              }
+
+              return (
+                <label className={`lead-product-option ${included ? "is-included" : ""}`} key={productCode}>
+                  <input
+                    type="checkbox"
+                    checked={included}
+                    disabled={mutating !== null}
+                    onChange={(event) => void setProductInterest(productCode, event.target.checked)}
+                  />
+                  <span className="lead-product-option-label">{label}</span>
+                  <span className={`lead-product-source lead-product-source-${sourceTone}`}>
+                    {busy ? "Kaydediliyor…" : sourceLabel}
+                  </span>
+                </label>
+              );
+            })}
           </div>
         </article>
 
@@ -420,17 +493,17 @@ export function LeadDetailPage() {
                     <textarea
                       value={editingNoteBody}
                       maxLength={5000}
-                      rows={3}
+                      rows={4}
                       onChange={(event) => setEditingNoteBody(event.target.value)}
                       disabled={mutating !== null}
                     />
                   ) : (
                     <p>{note.body}</p>
                   )}
-                  <div className="lead-note-meta">
+                  <div className="lead-note-footer">
                     <span>
                       {formatDate(note.createdAt)}
-                      {note.updatedAt !== note.createdAt ? ` · güncellendi ${formatDate(note.updatedAt)}` : ""}
+                      {note.updatedAt !== note.createdAt ? ` · Güncellendi ${formatDate(note.updatedAt)}` : ""}
                     </span>
                     <div>
                       {editing ? (
@@ -456,17 +529,8 @@ export function LeadDetailPage() {
                         </>
                       ) : (
                         <>
-                          <button type="button" onClick={() => beginEditNote(note)} disabled={mutating !== null}>
-                            Düzenle
-                          </button>
-                          <button
-                            type="button"
-                            className="is-danger"
-                            onClick={() => void removeNote(note)}
-                            disabled={mutating !== null}
-                          >
-                            {mutating === `note-delete:${note.id}` ? "Siliniyor…" : "Sil"}
-                          </button>
+                          <button type="button" onClick={() => beginEditNote(note)} disabled={mutating !== null}>Düzenle</button>
+                          <button type="button" className="is-danger" onClick={() => void removeNote(note)} disabled={mutating !== null}>Sil</button>
                         </>
                       )}
                     </div>
@@ -550,7 +614,7 @@ export function LeadDetailPage() {
                   <span className="lead-activity-dot" />
                   <div>
                     <strong>{activityLabels[activity.activityType] ?? activity.activityType}</strong>
-                    {detailText ? <em>{detailText}</em> : null}
+                    {detailText ? <span className="lead-activity-detail">{detailText}</span> : null}
                     <span>{formatDate(activity.occurredAt)}</span>
                   </div>
                 </div>

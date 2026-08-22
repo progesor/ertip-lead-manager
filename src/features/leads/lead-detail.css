@@ -81,6 +81,68 @@
   font-size: 11px;
 }
 
+.lead-detail-crm-actions {
+  display: flex;
+  min-width: min(100%, 520px);
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.lead-status-editor {
+  display: flex;
+  width: 100%;
+  max-width: 390px;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.lead-status-editor > label {
+  color: #778294;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.lead-status-editor > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+}
+
+.lead-status-editor select,
+.lead-status-editor button {
+  min-height: 36px;
+  border: 1px solid #dfe4ea;
+  border-radius: 8px;
+  background: #fff;
+  color: #4e5b6b;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.lead-status-editor select {
+  padding: 0 30px 0 10px;
+}
+
+.lead-status-editor button {
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+.lead-status-editor button:hover:not(:disabled) {
+  border-color: #b8cce1;
+  background: #f3f7fb;
+  color: #315d82;
+}
+
+.lead-status-editor button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
 .lead-detail-metrics {
   display: flex;
   flex-wrap: wrap;
@@ -122,7 +184,8 @@
 
 .lead-detail-products,
 .lead-detail-warnings,
-.lead-detail-activity-panel {
+.lead-detail-activity-panel,
+.lead-detail-notes-panel {
   padding: 16px;
 }
 
@@ -164,6 +227,138 @@
   padding: 16px 0;
   color: #8f98a5;
   font-size: 10px;
+}
+
+.lead-note-compose {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #e3e7ec;
+  border-radius: 9px;
+  background: #fafbfc;
+}
+
+.lead-note-compose textarea,
+.lead-note-card textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  border: 1px solid #dfe4ea;
+  border-radius: 8px;
+  outline: none;
+  background: #fff;
+  color: #3f4b59;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.lead-note-compose textarea {
+  min-height: 78px;
+  padding: 9px 10px;
+}
+
+.lead-note-card textarea {
+  min-height: 74px;
+  padding: 8px 9px;
+}
+
+.lead-note-compose textarea:focus,
+.lead-note-card textarea:focus {
+  border-color: #9bb8d2;
+  box-shadow: 0 0 0 3px rgb(62 111 150 / 8%);
+}
+
+.lead-note-compose > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 7px;
+}
+
+.lead-note-compose > div > span {
+  color: #9aa3af;
+  font-size: 9px;
+}
+
+.lead-note-compose button,
+.lead-note-meta button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid #dfe4ea;
+  border-radius: 7px;
+  background: #fff;
+  color: #5f6c7b;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.lead-note-compose button {
+  border-color: #bfd2e4;
+  background: #f2f7fb;
+  color: #315d82;
+}
+
+.lead-note-compose button:disabled,
+.lead-note-meta button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.lead-note-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.lead-note-card {
+  padding: 11px 12px;
+  border: 1px solid #e5e9ee;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.lead-note-card > p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #465363;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.lead-note-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid #f0f2f4;
+}
+
+.lead-note-meta > span {
+  color: #959eaa;
+  font-size: 8px;
+}
+
+.lead-note-meta > div {
+  display: flex;
+  gap: 5px;
+}
+
+.lead-note-meta button.is-primary {
+  border-color: #bfd2e4;
+  background: #f2f7fb;
+  color: #315d82;
+}
+
+.lead-note-meta button.is-danger {
+  border-color: #efd7d7;
+  color: #9a5656;
 }
 
 .lead-detail-submissions-panel {
@@ -358,6 +553,13 @@
   font-size: 10px;
 }
 
+.lead-activity-row em {
+  color: #697586;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 650;
+}
+
 .lead-activity-row span {
   color: #939ca9;
   font-size: 9px;
@@ -366,6 +568,11 @@
 @media (max-width: 1180px) {
   .lead-detail-hero {
     flex-direction: column;
+  }
+
+  .lead-detail-crm-actions {
+    width: 100%;
+    align-items: flex-start;
   }
 
   .lead-detail-metrics {
@@ -388,5 +595,14 @@
 
   .lead-source-value.is-wide {
     grid-column: auto;
+  }
+
+  .lead-status-editor > div {
+    grid-template-columns: 1fr;
+  }
+
+  .lead-note-meta {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

@@ -2,7 +2,7 @@ project:
   name: Ertip Lead Manager
   type: windows_desktop
   owner: Ertip Medical
-  phase: m1_foundation
+  phase: m2_import
 
 v1:
   platform:
@@ -13,9 +13,15 @@ v1:
     primary_language: tr
     domain_keys_language_neutral: true
   ingestion:
-    mode: manual_xlsx_import
+    mode: manual_file_import
+    supported_formats:
+      - xlsx
+      - csv
     live_google_sheets: false
     meta_api: false
+    csv_encoding:
+      required: utf8
+      allow_bom: true
   storage:
     engine: sqlite
     source_data_immutable: true
@@ -47,7 +53,23 @@ v1:
       - UNKNOWN
     legacy_free_text_supported: true
     preserve_raw_answers: true
-    future_export_header_and_serialization: verify_from_first_real_export
+    verified_export:
+      observed_on: 2026-08-21
+      header: which_product_would_you_like_to_receive_more_information_about?
+      multi_value_delimiter: "|"
+      values_are_machine_slugs: true
+      mapping:
+        fue_micromotor_systems: FUE_MICROMOTOR_SYSTEMS
+        long_hair_fue_solutions: LONG_HAIR_FUE_SOLUTIONS
+        fue_punches: FUE_PUNCHES
+        "implanters,_forceps_&_surgical_instruments": IMPLANTERS_FORCEPS_SURGICAL_INSTRUMENTS
+        "medical_chairs_&_clinic_furniture": MEDICAL_CHAIRS_CLINIC_FURNITURE
+        "other_products_/_general_information": OTHER_GENERAL_INFORMATION
+  ignored_source_columns:
+    - Status
+    - İletişime Geçme Tarihi
+  source_metadata_columns:
+    lead_status: preserve_raw_only
   statuses:
     - NEW
     - CONTACTED
@@ -90,7 +112,8 @@ technology:
   backend: rust
   database: sqlite
   database_access: sqlx
-  excel_parser: calamine
+  xlsx_parser: calamine
+  csv_parser: rust_csv
   validation: zod
   table: tanstack_table
   charts: recharts

@@ -2,6 +2,7 @@ mod commands;
 mod db;
 mod domain;
 mod error;
+mod importer;
 mod repositories;
 mod services;
 mod state;
@@ -15,6 +16,7 @@ use tauri::Manager;
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
@@ -34,7 +36,10 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::diagnostics::get_app_diagnostics
+            commands::diagnostics::get_app_diagnostics,
+            commands::imports::preview_import,
+            commands::imports::commit_import,
+            commands::imports::list_import_history,
         ])
         .run(tauri::generate_context!())
         .expect("Ertip Lead Manager çalıştırılamadı");

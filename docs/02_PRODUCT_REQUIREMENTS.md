@@ -4,16 +4,21 @@
 
 ### FR-IMP — Import
 
-**FR-IMP-001** The user can choose an `.xlsx` file from the Windows file picker.  
-**FR-IMP-002** The system reads the first supported worksheet containing the required lead headers.  
+**FR-IMP-001** The user can choose an `.xlsx` or `.csv` file from the Windows file picker.  
+**FR-IMP-002** For `.xlsx`, the system reads the first supported worksheet containing the required lead headers; for `.csv`, the file itself is the single tabular source.  
 **FR-IMP-003** The system validates required headers before showing an import preview.  
 **FR-IMP-004** Preview summarizes total rows, new submissions, exact duplicates, repeat-contact candidates, warnings, and blocking errors.  
 **FR-IMP-005** The user can inspect problematic rows before committing.  
 **FR-IMP-006** Import commit is transactional: either the batch commits consistently or rolls back.  
-**FR-IMP-007** Import history records file metadata, counts, timestamp, and outcome.  
+**FR-IMP-007** Import history records file metadata, counts, timestamp, format, and outcome.  
 **FR-IMP-008** Re-importing a previously imported external lead ID must not create a duplicate submission.  
 **FR-IMP-009** Source fields are preserved as imported, including raw form answers.  
-**FR-IMP-010** Invalid optional fields create warnings rather than blocking the entire batch where safe.
+**FR-IMP-010** Invalid optional fields create warnings rather than blocking the entire batch where safe.  
+**FR-IMP-011** Unknown additional columns must not break import and should be preserved in `raw_payload_json` where feasible.  
+**FR-IMP-012** Agency-added `Status` and `İletişime Geçme Tarihi` columns are ignored as CRM inputs in V1; they must never overwrite application status or follow-up data.  
+**FR-IMP-013** The source `lead_status` field is separate from the agency-added `Status` column and is retained as raw source metadata only.  
+**FR-IMP-014** CSV parsing must use a standards-compliant CSV parser and support UTF-8 with optional UTF-8 BOM.  
+**FR-IMP-015** XLSX and CSV adapters must converge on the same canonical row-validation, normalization, identity, preview, and transactional commit pipeline.
 
 ### FR-LEAD — Lead workspace
 
@@ -47,7 +52,8 @@
 **FR-PROD-008** Manual corrections take precedence over automatic legacy normalization for the affected record unless explicitly reset.  
 **FR-PROD-009** Filters use set-membership semantics: selecting a product finds leads/submissions containing that interest, including records with multiple interests.  
 **FR-PROD-010** Normalization rules may be managed in Settings in a later V1.x increment; seeded deterministic rules are acceptable initially.  
-**FR-PROD-011** The exact new Excel header and multi-select serialization format must be verified from the first real export after the Meta form change; importer code must not guess a delimiter before that evidence exists.
+**FR-PROD-011** The verified post-change Meta export keeps the header `which_product_would_you_like_to_receive_more_information_about?` and separates multiple machine values using `|`.  
+**FR-PROD-012** The structured parser must map each verified machine value independently and must never use commas as the multi-select delimiter.
 
 ### FR-DQ — Data quality
 
@@ -117,13 +123,15 @@ Business logic is separated from UI and persistence layers and covered with unit
 
 ## 3. V1 acceptance scenario
 
-Given an existing database with prior leads, when the user imports an updated Excel export containing old IDs, new IDs, repeat contacts, and malformed optional fields, the application must:
+Given an existing database with prior leads, when the user imports an updated supported export (`.xlsx` or `.csv`) containing old IDs, new IDs, repeat contacts, structured multi-select values, optional agency columns, and malformed optional fields, the application must:
 
 1. preview the impact;
 2. not reinsert old external IDs;
 3. link conservative repeat contacts;
 4. flag identity ambiguity instead of auto-merging it;
 5. retain source payloads;
-6. commit new data atomically;
-7. keep prior notes/status/follow-ups untouched;
-8. immediately expose new records in the lead workspace and analytics.
+6. parse all pipe-delimited structured product interests;
+7. ignore agency `Status` / `İletişime Geçme Tarihi` as CRM inputs;
+8. commit new data atomically;
+9. keep prior notes/status/follow-ups untouched;
+10. immediately expose new records in the lead workspace and analytics.

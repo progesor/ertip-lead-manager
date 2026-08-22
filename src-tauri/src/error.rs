@@ -11,6 +11,18 @@ pub enum AppError {
     Database(#[from] sqlx::Error),
     #[error("database migration error: {0}")]
     Migration(#[from] sqlx::migrate::MigrateError),
+    #[error("unsupported import file type: {0}")]
+    UnsupportedFileType(String),
+    #[error("import schema error: {0}")]
+    ImportSchema(String),
+    #[error("import blocked: {0}")]
+    ImportBlocked(String),
+    #[error("CSV parse error: {0}")]
+    Csv(#[from] csv::Error),
+    #[error("CSV input is not valid UTF-8")]
+    CsvEncoding,
+    #[error("XLSX parse error: {0}")]
+    Xlsx(#[from] calamine::Error),
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -34,6 +46,20 @@ impl CommandError {
             message: "Yerel veritabanı işlemi tamamlanamadı.",
         }
     }
+
+    fn import_file() -> Self {
+        Self {
+            code: "IMPORT_FILE_ERROR",
+            message: "Seçilen lead dosyası okunamadı veya desteklenen yapıda değil.",
+        }
+    }
+
+    fn import_blocked() -> Self {
+        Self {
+            code: "IMPORT_BLOCKED",
+            message: "İçe aktarım, çözülmesi gereken kimlik çakışması veya satır hatası içeriyor.",
+        }
+    }
 }
 
 impl From<AppError> for CommandError {
@@ -43,13 +69,19 @@ impl From<AppError> for CommandError {
         match error {
             AppError::AppData(_) | AppError::Io(_) => Self::app_data(),
             AppError::Database(_) | AppError::Migration(_) => Self::database(),
+            AppError::ImportBlocked(_) => Self::import_blocked(),
+            AppError::UnsupportedFileType(_)
+            | AppError::ImportSchema(_)
+            | AppError::Csv(_)
+            | AppError::CsvEncoding
+            | AppError::Xlsx(_) => Self::import_file(),
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::CommandError;
+    use super::{AppError, CommandError};
 
     #[test]
     fn command_error_serializes_with_stable_code_and_message() {
@@ -60,5 +92,19 @@ mod tests {
             value["message"],
             "Yerel veritabanı işlemi tamamlanamadı."
         );
+    }
+
+    #[test]
+    fn import_errors_have_a_stable_user_facing_category() {
+        let error = CommandError::from(AppError::UnsupportedFileType("txt".to_string()));
+
+        assert_eq!(error.code, "IMPORT_FILE_ERROR");
+    }
+
+    #[test]
+    fn blocked_import_has_a_distinct_user_facing_category() {
+        let error = CommandError::from(AppError::ImportBlocked("identity conflict".to_string()));
+
+        assert_eq!(error.code, "IMPORT_BLOCKED");
     }
 }

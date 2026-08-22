@@ -1,0 +1,71 @@
+.import-source-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.import-commit-button {
+  min-width: 150px;
+}
+
+.import-success {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid #b8dfcc;
+  border-radius: 8px;
+  background: #f1faf5;
+  color: #236a49;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.import-history-panel {
+  margin-top: 14px;
+  padding: 0;
+  overflow: hidden;
+}
+
+.import-history-panel .panel-heading {
+  padding: 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.import-history-table-wrap {
+  overflow-x: auto;
+}
+
+.import-history-table {
+  min-width: 900px;
+}
+
+.import-history-empty {
+  padding: 28px 18px;
+  color: #8b96a6;
+  font-size: 12px;
+}
+
+.import-history-file {
+  max-width: 280px;
+  overflow: hidden;
+  color: #2f3947;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-history-sheet {
+  margin-top: 3px;
+  color: #98a2b3;
+  font-size: 10px;
+}
+
+@media (max-width: 900px) {
+  .import-source-panel {
+    flex-direction: column;
+  }
+
+  .import-source-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+}

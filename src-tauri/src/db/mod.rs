@@ -54,7 +54,6 @@ impl Database {
         })
     }
 
-    #[cfg(test)]
     pub fn pool(&self) -> &SqlitePool {
         &self.pool
     }
@@ -84,7 +83,7 @@ mod tests {
         let database = Database::connect_memory().await.expect("open test database");
         let version = database.schema_version().await.expect("read schema version");
 
-        assert_eq!(version, 1);
+        assert_eq!(version, 2);
     }
 
     #[tokio::test]

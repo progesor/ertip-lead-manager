@@ -8,17 +8,17 @@
 
 ## 1. Problem
 
-Meta lead forms currently arrive in a spreadsheet. The spreadsheet is useful as a raw source, but it is inefficient for daily sales work because it does not provide reliable deduplication, repeat-lead recognition, lifecycle tracking, notes, follow-ups, data-quality warnings, or business-oriented analytics.
+Meta lead forms currently arrive in tabular exports. The source export is useful as raw evidence, but it is inefficient for daily sales work because it does not provide reliable deduplication, repeat-lead recognition, lifecycle tracking, notes, follow-ups, data-quality warnings, or business-oriented analytics.
 
-The application should turn periodic spreadsheet exports into a durable local lead database without altering or depending on the source spreadsheet.
+The application should turn periodic manual exports into a durable local lead database without altering or depending on the source spreadsheet/file.
 
 ## 2. V1 product statement
 
-> Ertip Lead Manager is a Windows application that manually imports Meta lead `.xlsx` exports, preserves source submissions, groups repeat contacts conservatively, and provides lead review, pipeline tracking, follow-ups, notes, data-quality checks, and practical analytics in a local SQLite database.
+> Ertip Lead Manager is a Windows application that manually imports Meta lead `.xlsx` or `.csv` exports, preserves source submissions, groups repeat contacts conservatively, and provides lead review, pipeline tracking, follow-ups, notes, data-quality checks, and practical analytics in a local SQLite database.
 
 ## 3. V1 must include
 
-- Manual `.xlsx` file selection and import.
+- Manual `.xlsx` and `.csv` file selection and import.
 - Import preview before database mutation.
 - Import history.
 - Exact duplicate prevention using external Meta lead ID.
@@ -59,7 +59,7 @@ The system separates **source submissions** from **application-managed CRM data*
 
 ### 5.1 Source submission data
 
-Imported from Excel and treated as immutable evidence of what arrived from Meta/form export.
+Imported from a supported manual export and treated as immutable evidence of what arrived from Meta/form export.
 
 Examples:
 
@@ -69,6 +69,10 @@ Examples:
 - platform
 - raw form answers
 - raw name/e-mail/phone/country/status fields
+
+Unknown additional source columns may be preserved in raw payload metadata but must not silently become CRM fields.
+
+The observed agency-maintained columns `Status` and `İletişime Geçme Tarihi` are **not** application lifecycle inputs in V1 and are ignored by default. The lower-case machine field `lead_status` is a separate source metadata field and is preserved raw only.
 
 ### 5.2 Application data
 
@@ -122,7 +126,7 @@ The UI may show friendly localized labels. Database/domain values remain stable 
 
 Product interest is **multi-valued**, not a single category. A contact/submission may legitimately be interested in several product groups at the same time.
 
-The canonical customer-facing taxonomy for the new Meta multi-select question is:
+The canonical customer-facing taxonomy for the Meta multi-select question is:
 
 1. `FUE_MICROMOTOR_SYSTEMS` — FUE Micromotor Systems
 2. `LONG_HAIR_FUE_SOLUTIONS` — Long Hair FUE Solutions
@@ -133,7 +137,9 @@ The canonical customer-facing taxonomy for the new Meta multi-select question is
 
 `UNKNOWN` is an internal classification state and is **not** shown as a form option.
 
-Raw form answers are always preserved. New multi-select answers should map to one or more canonical product-interest codes. Legacy free-text answers remain supported through deterministic normalization rules. Unknown or ambiguous legacy text remains `UNKNOWN` until manually classified.
+Raw form answers are always preserved. The post-change export observed on **2026-08-21** keeps the existing product-question header and serializes selected machine values using `|` as the delimiter. Single selections contain one machine value; multiple selections contain several values separated by `|`. Product selections must never be comma-split because one canonical machine value itself contains commas.
+
+Legacy free-text answers remain supported through deterministic normalization rules. Unknown or ambiguous legacy text remains `UNKNOWN` until manually classified.
 
 The application must never force a lead into exactly one product category. Filters and analytics must use set-membership semantics (for example, “contains FUE Punches”).
 
@@ -163,9 +169,10 @@ Canonical high-level stack:
 - React + TypeScript frontend
 - Rust backend commands/services
 - SQLite local database
-- Calamine for Excel parsing
+- Calamine for `.xlsx` parsing
+- Rust `csv` crate for `.csv` parsing
 
-Dependency-level changes are allowed through ADRs if the product constraints remain intact.
+Both file adapters must feed the same canonical import/domain pipeline. Dependency-level changes are allowed through ADRs if the product constraints remain intact.
 
 ## 12. Performance targets
 

@@ -17,6 +17,14 @@ export type ProductCode =
   | "OTHER_GENERAL_INFORMATION"
   | "UNKNOWN";
 
+export type DataQualityIssueType =
+  | "INVALID_EMAIL"
+  | "INVALID_PHONE"
+  | "INVALID_COUNTRY"
+  | "INVALID_TIMESTAMP"
+  | "MISSING_CONTACT_METHOD"
+  | "UNKNOWN_PRODUCT";
+
 export type LeadListSort = "LATEST_DESC" | "LATEST_ASC" | "NAME_ASC" | "NAME_DESC";
 
 export interface LeadListRequest {
@@ -43,6 +51,7 @@ export interface LeadListItem {
   isRepeat: boolean;
   productInterests: ProductCode[];
   warningCount: number;
+  warningTypes: DataQualityIssueType[];
 }
 
 export interface LeadListResponse {

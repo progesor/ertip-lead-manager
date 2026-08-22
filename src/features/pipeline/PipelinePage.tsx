@@ -8,7 +8,7 @@ import type {
   ProductCode,
 } from "../leads/types";
 import "./pipeline.css";
-import type { PipelineBoardResponse, PipelineCard } from "./types";
+import type { PipelineBoardResponse } from "./types";
 
 const statusLabels: Record<LeadStatus, string> = {
   NEW: "Yeni",
@@ -92,15 +92,14 @@ function moveCardLocally(
   contactId: string,
   targetStatus: LeadStatus,
 ): PipelineBoardResponse {
-  let movedCard: PipelineCard | null = null;
-  let sourceVisible = false;
+  const sourceColumn = board.columns.find((column) =>
+    column.cards.some((item) => item.id === contactId),
+  );
+  const movedCard = sourceColumn?.cards.find((item) => item.id === contactId);
+  if (!sourceColumn || !movedCard) return board;
 
   const withoutSource = board.columns.map((column) => {
-    const card = column.cards.find((item) => item.id === contactId);
-    if (!card) return column;
-
-    movedCard = card;
-    sourceVisible = true;
+    if (column.status !== sourceColumn.status) return column;
     return {
       ...column,
       total: Math.max(0, column.total - 1),
@@ -108,16 +107,13 @@ function moveCardLocally(
     };
   });
 
-  const cardToMove = movedCard;
-  if (!cardToMove) return board;
-
   let targetVisible = false;
   const nextColumns = withoutSource.map((column) => {
     if (column.status !== targetStatus) return column;
     targetVisible = true;
 
     const nextCards = [
-      { ...cardToMove, status: targetStatus },
+      { ...movedCard, status: targetStatus },
       ...column.cards.filter((item) => item.id !== contactId),
     ].slice(0, board.perColumnLimit);
     const nextTotal = column.total + 1;
@@ -133,7 +129,7 @@ function moveCardLocally(
   return {
     ...board,
     columns: nextColumns,
-    visibleTotal: board.visibleTotal + (targetVisible ? 1 : 0) - (sourceVisible ? 1 : 0),
+    visibleTotal: board.visibleTotal + (targetVisible ? 1 : 0) - 1,
   };
 }
 

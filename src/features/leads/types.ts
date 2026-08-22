@@ -123,6 +123,13 @@ export interface LeadDetailQualityIssue {
   resolvedAt: string | null;
 }
 
+export interface LeadDetailNote {
+  id: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface LeadDetailActivity {
   id: string;
   activityType: string;
@@ -134,6 +141,7 @@ export interface LeadDetailResponse {
   contact: LeadDetailContact;
   submissions: LeadDetailSubmission[];
   qualityIssues: LeadDetailQualityIssue[];
+  notes: LeadDetailNote[];
   activities: LeadDetailActivity[];
 }
 

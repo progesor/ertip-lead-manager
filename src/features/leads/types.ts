@@ -72,6 +72,12 @@ export interface LeadFilterOptions {
   countries: string[];
 }
 
+export interface LeadDetailProductOverride {
+  productCode: ProductCode;
+  action: "ADD" | "REMOVE";
+  createdAt: string;
+}
+
 export interface LeadDetailContact {
   id: string;
   displayName: string;
@@ -83,7 +89,9 @@ export interface LeadDetailContact {
   updatedAt: string;
   latestSubmissionAt: string | null;
   submissionCount: number;
+  automaticProductInterests: ProductCode[];
   productInterests: ProductCode[];
+  productOverrides: LeadDetailProductOverride[];
 }
 
 export interface LeadDetailSubmission {

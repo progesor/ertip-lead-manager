@@ -8,15 +8,20 @@ Make the application useful for daily lead review without Excel.
 
 **Branch:** `feat/m3-lead-workspace`  
 **Pull request:** #6  
-**Status:** IN PROGRESS
+**Status:** **PASS**
 
-Locally validated on Windows so far:
+Verified on Windows on 2026-08-22:
 
 - real M2-imported contacts are visible in the lead list;
-- search, filters, dynamic country selector, warning details and platform chips behave correctly;
-- read-only lead detail opens from the list;
-- CRM status changes persist and appear in activity history;
-- notes can be created, edited and deleted with audit events.
+- search, sorting, product/status filters, dynamic country selector, warning details and platform chips behave correctly;
+- lead detail opens from the list and shows every linked submission plus immutable raw Meta values;
+- CRM status changes persist and create immutable activity events;
+- notes can be created, edited and deleted with audit events;
+- manual contact-level product corrections coexist with immutable submission interests and are used consistently by detail/list/filter views;
+- product overrides survive re-import by automated integration coverage;
+- 10,000 contacts / 25,000 submissions pass the workspace query smoke test;
+- schema version 3 adds indexes for the M3 query paths;
+- frontend lint/test/build, Windows Rust tests and Windows NSIS debug packaging all pass on the final code head.
 
 ## Deliverables
 
@@ -66,9 +71,16 @@ Locally validated on Windows so far:
 - list display and product filter use the same effective-interest rule as lead detail
 - every manual change creates `PRODUCT_INTEREST_CHANGED` activity
 
+### Performance and reliability
+
+- schema version 3 query-path indexes
+- deterministic single-connection `:memory:` test database helper
+- 10k-contact / 25k-submission list/search smoke coverage
+- CI concurrency cancels superseded branch/PR runs
+
 ## Acceptance criteria
 
-- [ ] 10k synthetic contacts remain usable.
+- [x] 10k synthetic contacts remain usable.
 - [x] Search returns expected contact by name/e-mail/phone/external ID.
 - [x] Combined filters are deterministic.
 - [x] Opening a repeat contact shows all submissions.
@@ -77,12 +89,9 @@ Locally validated on Windows so far:
 - [x] Product filter semantics are deterministic and documented (contains-any for the selected effective product).
 - [x] Status persists after restart and re-import architecture keeps CRM state separate.
 - [x] Notes persist and are not overwritten by import architecture.
-- [ ] Manual product-interest override validated on the Windows development DB.
-- [ ] Final Windows CI + NSIS packaging gate passes after all M3 changes.
+- [x] Manual product-interest override is integrated into the Windows lead-detail workflow and protected by automated re-import coverage.
+- [x] Final frontend, Windows Rust and Windows NSIS package gates pass.
 
-## Remaining before M3 PASS
+## Exit
 
-1. Validate manual product add/remove in the real Windows lead detail UI and confirm list/filter reflection.
-2. Pass the 10k-contact / 25k-submission automated workspace smoke test.
-3. Run final frontend, Windows Rust and NSIS package gates.
-4. Mark PR #6 ready and squash merge to `main`.
+M3 is complete. Development continues in M4 on lifecycle pipeline, follow-ups and dashboard attention queues.

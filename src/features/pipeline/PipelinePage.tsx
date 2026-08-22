@@ -74,6 +74,26 @@ function platformLabel(value: string) {
   }
 }
 
+function localDayKey(date: Date) {
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function followUpKind(value: string) {
+  const due = new Date(value);
+  if (Number.isNaN(due.getTime())) return "upcoming";
+  const now = new Date();
+  if (due.getTime() < now.getTime()) return "overdue";
+  if (localDayKey(due) === localDayKey(now)) return "today";
+  return "upcoming";
+}
+
+function followUpLabel(value: string) {
+  const kind = followUpKind(value);
+  if (kind === "overdue") return `Gecikmiş · ${formatDate(value)}`;
+  if (kind === "today") return `Bugün · ${formatDate(value)}`;
+  return `Takip · ${formatDate(value)}`;
+}
+
 function commandErrorMessage(error: unknown) {
   if (typeof error === "object" && error !== null && "message" in error) {
     return String((error as CommandError).message);
@@ -383,6 +403,13 @@ export function PipelinePage() {
                       ))}
                       {card.warningCount > 0 ? <span className="pipeline-warning">⚠ {card.warningCount}</span> : null}
                     </div>
+
+                    {card.nextFollowUpAt ? (
+                      <div className={`pipeline-follow-up pipeline-follow-up-${followUpKind(card.nextFollowUpAt)}`}>
+                        <span>{followUpLabel(card.nextFollowUpAt)}</span>
+                        {card.openFollowUpCount > 1 ? <strong>+{card.openFollowUpCount - 1}</strong> : null}
+                      </div>
+                    ) : null}
 
                     <label className="pipeline-card-status">
                       <span>Durum</span>

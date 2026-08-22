@@ -197,6 +197,91 @@ impl LeadCrmRepository {
         transaction.commit().await?;
         Ok(())
     }
+
+    pub async fn set_product_interest(
+        &self,
+        contact_id: &str,
+        product_code: &str,
+        included: bool,
+        occurred_at: &str,
+    ) -> Result<bool, AppError> {
+        let mut transaction = self.pool.begin().await?;
+        ensure_contact_exists(&mut transaction, contact_id).await?;
+
+        let automatic_count = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*)
+            FROM lead_submissions s
+            JOIN submission_product_interests spi ON spi.lead_submission_id = s.id
+            WHERE s.lead_contact_id = ? AND spi.product_code = ?
+            "#,
+        )
+        .bind(contact_id)
+        .bind(product_code)
+        .fetch_one(&mut *transaction)
+        .await?;
+
+        let latest_action = sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT action
+            FROM contact_product_interest_overrides
+            WHERE lead_contact_id = ? AND product_code = ?
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(contact_id)
+        .bind(product_code)
+        .fetch_optional(&mut *transaction)
+        .await?;
+
+        let currently_included = match latest_action.as_deref() {
+            Some("ADD") => true,
+            Some("REMOVE") => false,
+            _ => automatic_count > 0,
+        };
+
+        if currently_included == included {
+            transaction.commit().await?;
+            return Ok(false);
+        }
+
+        let action = if included { "ADD" } else { "REMOVE" };
+        let override_id = Uuid::new_v4().to_string();
+        sqlx::query(
+            "INSERT INTO contact_product_interest_overrides (id, lead_contact_id, product_code, action, created_at) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(&override_id)
+        .bind(contact_id)
+        .bind(product_code)
+        .bind(action)
+        .bind(occurred_at)
+        .execute(&mut *transaction)
+        .await?;
+
+        sqlx::query("UPDATE lead_contacts SET updated_at = ? WHERE id = ?")
+            .bind(occurred_at)
+            .bind(contact_id)
+            .execute(&mut *transaction)
+            .await?;
+
+        insert_activity(
+            &mut transaction,
+            contact_id,
+            "PRODUCT_INTEREST_CHANGED",
+            occurred_at,
+            json!({
+                "productCode": product_code,
+                "included": included,
+                "previousIncluded": currently_included,
+                "overrideId": override_id,
+            }),
+        )
+        .await?;
+
+        transaction.commit().await?;
+        Ok(true)
+    }
 }
 
 async fn ensure_contact_exists(
@@ -256,6 +341,29 @@ mod tests {
         .await
         .expect("seed contact");
         contact_id
+    }
+
+    async fn seed_automatic_product(database: &Database, contact_id: &str, product_code: &str) {
+        let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+        sqlx::query("INSERT INTO import_batches (id, file_name, sheet_name, started_at, completed_at, status, total_rows, app_version) VALUES ('crm-batch', 'crm.csv', 'CSV', ?, ?, 'COMMITTED', 1, '0.1.0')")
+            .bind(&now)
+            .bind(&now)
+            .execute(database.pool())
+            .await
+            .expect("seed batch");
+        sqlx::query("INSERT INTO lead_submissions (id, lead_contact_id, import_batch_id, external_lead_id, source_created_at_raw, raw_payload_json, created_at) VALUES ('crm-submission', ?, 'crm-batch', 'l:crm-product', ?, '{}', ?)")
+            .bind(contact_id)
+            .bind(&now)
+            .bind(&now)
+            .execute(database.pool())
+            .await
+            .expect("seed submission");
+        sqlx::query("INSERT INTO submission_product_interests (id, lead_submission_id, product_code, origin, confidence, created_at) VALUES ('crm-product', 'crm-submission', ?, 'DIRECT_MULTI_SELECT', 'HIGH', ?)")
+            .bind(product_code)
+            .bind(&now)
+            .execute(database.pool())
+            .await
+            .expect("seed product");
     }
 
     #[tokio::test]
@@ -327,5 +435,45 @@ mod tests {
 
         assert_eq!(remaining, 0);
         assert_eq!(activity_count, 3);
+    }
+
+    #[tokio::test]
+    async fn manual_product_override_is_append_only_and_audited() {
+        let database = Database::connect_memory().await.expect("open database");
+        let contact_id = seed_contact(&database).await;
+        seed_automatic_product(&database, &contact_id, "FUE_PUNCHES").await;
+        let repository = LeadCrmRepository::new(database.pool().clone());
+        let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
+
+        assert!(repository
+            .set_product_interest(&contact_id, "FUE_PUNCHES", false, &now)
+            .await
+            .expect("remove automatic product"));
+        assert!(repository
+            .set_product_interest(&contact_id, "FUE_PUNCHES", true, &now)
+            .await
+            .expect("re-add product"));
+        assert!(repository
+            .set_product_interest(&contact_id, "LONG_HAIR_FUE_SOLUTIONS", true, &now)
+            .await
+            .expect("add manual product"));
+
+        let overrides: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM contact_product_interest_overrides WHERE lead_contact_id = ?",
+        )
+        .bind(&contact_id)
+        .fetch_one(database.pool())
+        .await
+        .expect("count overrides");
+        let activities: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM lead_activities WHERE lead_contact_id = ? AND activity_type = 'PRODUCT_INTEREST_CHANGED'",
+        )
+        .bind(&contact_id)
+        .fetch_one(database.pool())
+        .await
+        .expect("count product activities");
+
+        assert_eq!(overrides, 3);
+        assert_eq!(activities, 3);
     }
 }

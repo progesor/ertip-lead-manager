@@ -8,4 +8,6 @@ pub mod lead_detail_service;
 pub mod lead_workspace_service;
 
 #[cfg(test)]
+mod lead_product_override_integration_tests;
+#[cfg(test)]
 mod lead_workspace_performance_tests;

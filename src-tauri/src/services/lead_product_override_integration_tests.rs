@@ -21,7 +21,7 @@ async fn reimport_does_not_overwrite_manual_product_interest_override() {
         .expect("initial import");
 
     let contact_id: String = sqlx::query_scalar(
-        "SELECT lead_contact_id FROM lead_submissions WHERE external_lead_id = 'l:demo2004'",
+        "SELECT lead_contact_id FROM lead_submissions WHERE external_lead_id = 'l:demo2002'",
     )
     .fetch_one(database.pool())
     .await
@@ -44,6 +44,14 @@ async fn reimport_does_not_overwrite_manual_product_interest_override() {
         .expect("load detail")
         .expect("contact exists");
 
+    assert!(detail
+        .contact
+        .automatic_product_interests
+        .contains(&"FUE_PUNCHES".to_string()));
+    assert!(!detail
+        .contact
+        .automatic_product_interests
+        .contains(&"MEDICAL_CHAIRS_CLINIC_FURNITURE".to_string()));
     assert!(detail
         .contact
         .product_interests

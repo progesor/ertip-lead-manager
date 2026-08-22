@@ -1,5 +1,6 @@
 use sqlx::{QueryBuilder, Row, Sqlite, SqlitePool};
 
+use crate::domain::product_interest::effective_product_interests;
 use crate::error::AppError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,7 +75,22 @@ impl LeadWorkspaceRepository {
                     JOIN submission_product_interests spi
                       ON spi.lead_submission_id = s.id
                     WHERE s.lead_contact_id = c.id
-                ), '') AS product_codes,
+                ), '') AS automatic_product_codes,
+                COALESCE((
+                    SELECT GROUP_CONCAT(o.product_code || '=' || o.action, '|')
+                    FROM contact_product_interest_overrides o
+                    WHERE o.lead_contact_id = c.id
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM contact_product_interest_overrides newer
+                          WHERE newer.lead_contact_id = o.lead_contact_id
+                            AND newer.product_code = o.product_code
+                            AND (
+                                newer.created_at > o.created_at
+                                OR (newer.created_at = o.created_at AND newer.id > o.id)
+                            )
+                      )
+                ), '') AS product_overrides,
                 COALESCE((
                     SELECT GROUP_CONCAT(DISTINCT LOWER(TRIM(s.platform)))
                     FROM lead_submissions s
@@ -106,9 +122,11 @@ impl LeadWorkspaceRepository {
         let records = rows
             .into_iter()
             .map(|row| {
-                let raw_products: String = row.get("product_codes");
+                let raw_automatic_products: String = row.get("automatic_product_codes");
+                let raw_overrides: String = row.get("product_overrides");
                 let raw_platforms: String = row.get("platforms");
                 let raw_warning_types: String = row.get("warning_types");
+
                 LeadListRecord {
                     id: row.get("id"),
                     display_name: row.get("display_name"),
@@ -118,7 +136,10 @@ impl LeadWorkspaceRepository {
                     status: row.get("status"),
                     latest_submission_at: row.get("latest_submission_at"),
                     submission_count: row.get("submission_count"),
-                    product_codes: split_group_concat(&raw_products),
+                    product_codes: effective_product_interests(
+                        split_group_concat(&raw_automatic_products),
+                        split_overrides(&raw_overrides),
+                    ),
                     platforms: split_group_concat(&raw_platforms),
                     warning_count: row.get("warning_count"),
                     warning_types: split_group_concat(&raw_warning_types),
@@ -157,6 +178,14 @@ fn split_group_concat(value: &str) -> Vec<String> {
         .split(',')
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
+        .collect()
+}
+
+fn split_overrides(value: &str) -> Vec<(String, String)> {
+    value
+        .split('|')
+        .filter_map(|entry| entry.split_once('='))
+        .map(|(product_code, action)| (product_code.to_string(), action.to_string()))
         .collect()
 }
 
@@ -213,10 +242,7 @@ fn append_filters(builder: &mut QueryBuilder<'_, Sqlite>, filters: &LeadListFilt
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        builder.push(
-            " AND EXISTS (SELECT 1 FROM lead_submissions product_submission JOIN submission_product_interests product_interest ON product_interest.lead_submission_id = product_submission.id WHERE product_submission.lead_contact_id = c.id AND product_interest.product_code = ",
-        );
-        builder.push_bind(product_code.to_string()).push(")");
+        append_effective_product_filter(builder, product_code);
     }
 
     if filters.repeat_only {
@@ -228,6 +254,18 @@ fn append_filters(builder: &mut QueryBuilder<'_, Sqlite>, filters: &LeadListFilt
             " AND EXISTS (SELECT 1 FROM lead_data_quality_issues warning_issue WHERE warning_issue.lead_contact_id = c.id AND warning_issue.status = 'OPEN')",
         );
     }
+}
+
+fn append_effective_product_filter(builder: &mut QueryBuilder<'_, Sqlite>, product_code: &str) {
+    builder.push(
+        " AND COALESCE((SELECT o.action FROM contact_product_interest_overrides o WHERE o.lead_contact_id = c.id AND o.product_code = ",
+    );
+    builder.push_bind(product_code.to_string());
+    builder.push(
+        " ORDER BY o.created_at DESC, o.id DESC LIMIT 1), CASE WHEN EXISTS (SELECT 1 FROM lead_submissions product_submission JOIN submission_product_interests product_interest ON product_interest.lead_submission_id = product_submission.id WHERE product_submission.lead_contact_id = c.id AND product_interest.product_code = ",
+    );
+    builder.push_bind(product_code.to_string());
+    builder.push(") THEN 'ADD' ELSE 'REMOVE' END) = 'ADD'");
 }
 
 fn append_sort(builder: &mut QueryBuilder<'_, Sqlite>, sort: LeadListSort) {
@@ -254,9 +292,7 @@ mod tests {
     use super::{LeadListFilters, LeadListQuery, LeadListSort, LeadWorkspaceRepository};
     use crate::db::Database;
 
-    #[tokio::test]
-    async fn list_supports_external_id_search_product_filter_and_repeat_warning_indicators() {
-        let database = Database::connect_memory().await.expect("open database");
+    async fn seed_workspace(database: &Database) -> String {
         let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
 
         sqlx::query(
@@ -314,6 +350,14 @@ mod tests {
                 .expect("insert warning");
         }
 
+        now
+    }
+
+    #[tokio::test]
+    async fn list_supports_external_id_search_product_filter_and_repeat_warning_indicators() {
+        let database = Database::connect_memory().await.expect("open database");
+        seed_workspace(&database).await;
+
         let repository = LeadWorkspaceRepository::new(database.pool().clone());
         let query = LeadListQuery {
             filters: LeadListFilters {
@@ -340,5 +384,56 @@ mod tests {
 
         let countries = repository.country_codes().await.expect("country options");
         assert_eq!(countries, vec!["GB", "TR"]);
+    }
+
+    #[tokio::test]
+    async fn latest_manual_product_override_controls_list_display_and_filtering() {
+        let database = Database::connect_memory().await.expect("open database");
+        let now = seed_workspace(&database).await;
+
+        sqlx::query("INSERT INTO contact_product_interest_overrides (id, lead_contact_id, product_code, action, created_at) VALUES ('override-remove', 'contact-a', 'FUE_PUNCHES', 'REMOVE', ?), ('override-add', 'contact-a', 'LONG_HAIR_FUE_SOLUTIONS', 'ADD', ?)")
+            .bind(&now)
+            .bind(&now)
+            .execute(database.pool())
+            .await
+            .expect("insert overrides");
+
+        let repository = LeadWorkspaceRepository::new(database.pool().clone());
+        let all_query = LeadListQuery {
+            filters: LeadListFilters {
+                search: Some("Alex".to_string()),
+                ..LeadListFilters::default()
+            },
+            sort: LeadListSort::LatestDesc,
+            limit: 50,
+            offset: 0,
+        };
+        let (rows, _) = repository.list(&all_query).await.expect("list Alex");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].product_codes, vec!["LONG_HAIR_FUE_SOLUTIONS"]);
+
+        let removed_query = LeadListQuery {
+            filters: LeadListFilters {
+                product_code: Some("FUE_PUNCHES".to_string()),
+                ..LeadListFilters::default()
+            },
+            sort: LeadListSort::LatestDesc,
+            limit: 50,
+            offset: 0,
+        };
+        let (_, removed_total) = repository.list(&removed_query).await.expect("filter removed product");
+        assert_eq!(removed_total, 0);
+
+        let added_query = LeadListQuery {
+            filters: LeadListFilters {
+                product_code: Some("LONG_HAIR_FUE_SOLUTIONS".to_string()),
+                ..LeadListFilters::default()
+            },
+            sort: LeadListSort::LatestDesc,
+            limit: 50,
+            offset: 0,
+        };
+        let (_, added_total) = repository.list(&added_query).await.expect("filter added product");
+        assert_eq!(added_total, 2);
     }
 }

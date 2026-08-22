@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
@@ -25,6 +27,13 @@ pub struct LeadListRequest {
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct LeadWarningSummary {
+    pub issue_type: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct LeadListItem {
     pub id: String,
     pub display_name: String,
@@ -36,8 +45,9 @@ pub struct LeadListItem {
     pub submission_count: i64,
     pub is_repeat: bool,
     pub product_interests: Vec<String>,
+    pub platforms: Vec<String>,
     pub warning_count: i64,
-    pub warning_types: Vec<String>,
+    pub warning_summaries: Vec<LeadWarningSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -48,6 +58,12 @@ pub struct LeadListResponse {
     pub page: u32,
     pub page_size: u32,
     pub total_pages: u32,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct LeadFilterOptions {
+    pub countries: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -108,8 +124,9 @@ impl LeadWorkspaceService {
                 submission_count: record.submission_count,
                 is_repeat: record.submission_count > 1,
                 product_interests: record.product_codes,
+                platforms: record.platforms,
                 warning_count: record.warning_count,
-                warning_types: record.warning_types,
+                warning_summaries: summarize_warnings(record.warning_types),
             })
             .collect();
 
@@ -121,6 +138,24 @@ impl LeadWorkspaceService {
             total_pages,
         })
     }
+
+    pub async fn filter_options(&self) -> Result<LeadFilterOptions, AppError> {
+        Ok(LeadFilterOptions {
+            countries: self.repository.country_codes().await?,
+        })
+    }
+}
+
+fn summarize_warnings(warning_types: Vec<String>) -> Vec<LeadWarningSummary> {
+    let mut counts = BTreeMap::<String, i64>::new();
+    for issue_type in warning_types {
+        *counts.entry(issue_type).or_insert(0) += 1;
+    }
+
+    counts
+        .into_iter()
+        .map(|(issue_type, count)| LeadWarningSummary { issue_type, count })
+        .collect()
 }
 
 fn clean_optional(value: Option<String>) -> Option<String> {
@@ -140,7 +175,7 @@ fn parse_sort(value: Option<&str>) -> LeadListSort {
 
 #[cfg(test)]
 mod tests {
-    use super::{clean_optional, parse_sort};
+    use super::{clean_optional, parse_sort, summarize_warnings};
     use crate::repositories::lead_workspace_repository::LeadListSort;
 
     #[test]
@@ -149,5 +184,20 @@ mod tests {
         assert_eq!(clean_optional(Some("   ".into())), None);
         assert_eq!(parse_sort(Some("NAME_ASC")), LeadListSort::NameAsc);
         assert_eq!(parse_sort(Some("unknown")), LeadListSort::LatestDesc);
+    }
+
+    #[test]
+    fn warning_types_are_grouped_with_counts() {
+        let summaries = summarize_warnings(vec![
+            "UNKNOWN_PRODUCT".into(),
+            "INVALID_PHONE".into(),
+            "UNKNOWN_PRODUCT".into(),
+        ]);
+
+        assert_eq!(summaries.len(), 2);
+        assert_eq!(summaries[0].issue_type, "INVALID_PHONE");
+        assert_eq!(summaries[0].count, 1);
+        assert_eq!(summaries[1].issue_type, "UNKNOWN_PRODUCT");
+        assert_eq!(summaries[1].count, 2);
     }
 }

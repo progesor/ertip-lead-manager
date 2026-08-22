@@ -1,6 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
+use sqlx::{
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+    SqlitePool,
+};
 
 use crate::error::AppError;
 
@@ -34,7 +37,13 @@ impl Database {
             .create_if_missing(true)
             .foreign_keys(true);
 
-        let pool = SqlitePool::connect_with(options).await?;
+        // SQLite's plain `:memory:` database is connection-local. Test helpers must
+        // therefore keep the pool on one connection so migrations and assertions
+        // always observe the same in-memory database.
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await?;
         sqlx::migrate!("./migrations").run(&pool).await?;
 
         Ok(Self {

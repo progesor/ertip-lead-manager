@@ -63,6 +63,13 @@ pub struct LeadActivityRecord {
     pub payload_json: String,
 }
 
+#[derive(Debug, Clone, FromRow)]
+pub struct LeadProductOverrideRecord {
+    pub product_code: String,
+    pub action: String,
+    pub created_at: String,
+}
+
 #[derive(Clone)]
 pub struct LeadDetailRepository {
     pool: SqlitePool,
@@ -172,6 +179,35 @@ impl LeadDetailRepository {
             WHERE lead_contact_id = ?
             ORDER BY occurred_at DESC, id DESC
             LIMIT 100
+            "#,
+        )
+        .bind(contact_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
+    pub async fn latest_product_overrides(
+        &self,
+        contact_id: &str,
+    ) -> Result<Vec<LeadProductOverrideRecord>, AppError> {
+        let rows = sqlx::query_as::<_, LeadProductOverrideRecord>(
+            r#"
+            SELECT o.product_code, o.action, o.created_at
+            FROM contact_product_interest_overrides o
+            WHERE o.lead_contact_id = ?
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM contact_product_interest_overrides newer
+                  WHERE newer.lead_contact_id = o.lead_contact_id
+                    AND newer.product_code = o.product_code
+                    AND (
+                        newer.created_at > o.created_at
+                        OR (newer.created_at = o.created_at AND newer.id > o.id)
+                    )
+              )
+            ORDER BY o.product_code ASC
             "#,
         )
         .bind(contact_id)

@@ -260,6 +260,7 @@ export function LeadsPage() {
             <div className="leads-country-input-wrap">
               <input
                 type="search"
+                role="combobox"
                 value={country ? formatCountry(country) : countryQuery}
                 onFocus={() => setCountryOpen(true)}
                 onBlur={() => window.setTimeout(() => setCountryOpen(false), 120)}
@@ -272,6 +273,8 @@ export function LeadsPage() {
                 placeholder="Kod veya ülke ara"
                 aria-label="Ülke filtresi"
                 aria-expanded={countryOpen}
+                aria-controls="lead-country-options"
+                aria-autocomplete="list"
               />
               {(country || countryQuery) ? (
                 <button
@@ -291,7 +294,7 @@ export function LeadsPage() {
               ) : null}
             </div>
             {countryOpen ? (
-              <div className="leads-country-menu" role="listbox">
+              <div className="leads-country-menu" id="lead-country-options" role="listbox">
                 {filteredCountries.length > 0 ? (
                   filteredCountries.map((code) => (
                     <button

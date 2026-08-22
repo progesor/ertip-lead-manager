@@ -6,3 +6,6 @@ pub mod import_preview_service;
 pub mod lead_crm_service;
 pub mod lead_detail_service;
 pub mod lead_workspace_service;
+
+#[cfg(test)]
+mod lead_workspace_performance_tests;

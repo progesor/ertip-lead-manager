@@ -94,6 +94,22 @@ The structured Meta question should be multi-select: **“Which products are you
 
 A lead choosing both Micromotor and FUE Punches must retain both interests. There is no canonical “primary product” in V1.
 
+### 8.1 Automatic vs effective contact interests
+
+Submission-level product interests are source-derived data and are immutable after import.
+
+The contact workspace exposes an **effective product-interest set** for CRM use:
+
+1. union all canonical interests from every linked submission;
+2. find the latest manual contact override for each product code;
+3. latest `ADD` forces that product into the effective set;
+4. latest `REMOVE` forces that product out of the effective set;
+5. a product with no manual override follows the immutable source-derived union.
+
+Manual overrides are append-only records in `contact_product_interest_overrides`. Re-import never deletes or rewrites them. Each change creates a `PRODUCT_INTEREST_CHANGED` activity event containing product code and include/remove direction, while the original source submission values remain unchanged.
+
+Lead-list product chips and product filters use the same effective-interest rule as lead detail. This prevents list/detail disagreement after a manual correction.
+
 ## 9. Legacy product normalization examples
 
 Legacy free-text answers remain supported. Rule concepts include:
@@ -137,6 +153,8 @@ Normalized identifiers point to different contacts. Requires manual resolution b
 ### `MISSING_CONTACT_METHOD`
 
 No valid e-mail or phone; may still be usable if name/source information exists, but should be visible.
+
+A manual product correction does not rewrite or delete the original source-quality issue. Issue resolution/dismissal is a separate review decision so the application retains the fact that the original source value was ambiguous.
 
 ## 11. Manual identity resolution
 

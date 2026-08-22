@@ -49,6 +49,11 @@ pub fn run() {
             commands::leads::delete_lead_note,
             commands::leads::set_lead_product_interest,
             commands::pipeline::get_pipeline_board,
+            commands::follow_ups::list_lead_follow_ups,
+            commands::follow_ups::create_lead_follow_up,
+            commands::follow_ups::reschedule_lead_follow_up,
+            commands::follow_ups::complete_lead_follow_up,
+            commands::follow_ups::cancel_lead_follow_up,
         ])
         .run(tauri::generate_context!())
         .expect("Ertip Lead Manager çalıştırılamadı");

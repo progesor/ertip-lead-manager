@@ -39,6 +39,11 @@ export interface LeadListRequest {
   pageSize: number;
 }
 
+export interface LeadWarningSummary {
+  issueType: DataQualityIssueType;
+  count: number;
+}
+
 export interface LeadListItem {
   id: string;
   displayName: string;
@@ -50,8 +55,9 @@ export interface LeadListItem {
   submissionCount: number;
   isRepeat: boolean;
   productInterests: ProductCode[];
+  platforms: string[];
   warningCount: number;
-  warningTypes: DataQualityIssueType[];
+  warningSummaries: LeadWarningSummary[];
 }
 
 export interface LeadListResponse {
@@ -60,6 +66,10 @@ export interface LeadListResponse {
   page: number;
   pageSize: number;
   totalPages: number;
+}
+
+export interface LeadFilterOptions {
+  countries: string[];
 }
 
 export interface CommandError {

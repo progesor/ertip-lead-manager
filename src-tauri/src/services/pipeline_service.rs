@@ -5,6 +5,7 @@ use crate::error::AppError;
 use crate::repositories::lead_workspace_repository::{
     LeadListFilters, LeadListQuery, LeadListSort, LeadWorkspaceRepository,
 };
+use crate::repositories::pipeline_follow_up_repository::PipelineFollowUpRepository;
 
 const ACTIVE_STATUSES: [&str; 5] = ["NEW", "CONTACTED", "REPLIED", "QUALIFIED", "QUOTE_SENT"];
 const TERMINAL_STATUSES: [&str; 3] = ["WON", "LOST", "INVALID"];
@@ -38,6 +39,8 @@ pub struct PipelineCard {
     pub product_interests: Vec<String>,
     pub platforms: Vec<String>,
     pub warning_count: i64,
+    pub next_follow_up_at: Option<String>,
+    pub open_follow_up_count: i64,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -60,12 +63,14 @@ pub struct PipelineBoardResponse {
 #[derive(Clone)]
 pub struct PipelineService {
     repository: LeadWorkspaceRepository,
+    follow_up_repository: PipelineFollowUpRepository,
 }
 
 impl PipelineService {
     pub fn new(pool: SqlitePool) -> Self {
         Self {
-            repository: LeadWorkspaceRepository::new(pool),
+            repository: LeadWorkspaceRepository::new(pool.clone()),
+            follow_up_repository: PipelineFollowUpRepository::new(pool),
         }
     }
 
@@ -84,6 +89,8 @@ impl PipelineService {
             repeat_only: request.repeat_only.unwrap_or(false),
             warning_only: request.warning_only.unwrap_or(false),
         };
+
+        let follow_up_summaries = self.follow_up_repository.open_summaries().await?;
 
         let mut statuses = ACTIVE_STATUSES.to_vec();
         if request.include_terminal.unwrap_or(false) {
@@ -109,22 +116,27 @@ impl PipelineService {
 
             let cards = records
                 .into_iter()
-                .map(|record| PipelineCard {
-                    id: record.id,
-                    display_name: record
-                        .display_name
-                        .filter(|value| !value.trim().is_empty())
-                        .unwrap_or_else(|| "İsimsiz lead".to_string()),
-                    primary_email: record.primary_email,
-                    primary_phone: record.primary_phone,
-                    country_code: record.country_code,
-                    status: record.status,
-                    latest_submission_at: record.latest_submission_at,
-                    submission_count: record.submission_count,
-                    is_repeat: record.submission_count > 1,
-                    product_interests: record.product_codes,
-                    platforms: record.platforms,
-                    warning_count: record.warning_count,
+                .map(|record| {
+                    let follow_up = follow_up_summaries.get(&record.id);
+                    PipelineCard {
+                        id: record.id,
+                        display_name: record
+                            .display_name
+                            .filter(|value| !value.trim().is_empty())
+                            .unwrap_or_else(|| "İsimsiz lead".to_string()),
+                        primary_email: record.primary_email,
+                        primary_phone: record.primary_phone,
+                        country_code: record.country_code,
+                        status: record.status,
+                        latest_submission_at: record.latest_submission_at,
+                        submission_count: record.submission_count,
+                        is_repeat: record.submission_count > 1,
+                        product_interests: record.product_codes,
+                        platforms: record.platforms,
+                        warning_count: record.warning_count,
+                        next_follow_up_at: follow_up.map(|item| item.next_due_at.clone()),
+                        open_follow_up_count: follow_up.map(|item| item.open_count).unwrap_or(0),
+                    }
                 })
                 .collect::<Vec<_>>();
 
@@ -181,6 +193,14 @@ mod tests {
             .expect("seed pipeline contact");
         }
 
+        sqlx::query(
+            "INSERT INTO follow_ups (id, lead_contact_id, due_at, status, note, created_at) VALUES ('pipeline-follow-up', 'pipeline-new', '2026-08-23T08:00:00.000Z', 'OPEN', 'Ara', ?)",
+        )
+        .bind(&now)
+        .execute(database.pool())
+        .await
+        .expect("seed pipeline follow-up");
+
         let service = PipelineService::new(database.pool().clone());
         let active = service
             .board(PipelineBoardRequest::default())
@@ -191,6 +211,11 @@ mod tests {
         assert_eq!(active.visible_total, 2);
         assert_eq!(active.columns[0].status, "NEW");
         assert_eq!(active.columns[0].cards[0].id, "pipeline-new");
+        assert_eq!(
+            active.columns[0].cards[0].next_follow_up_at.as_deref(),
+            Some("2026-08-23T08:00:00.000Z")
+        );
+        assert_eq!(active.columns[0].cards[0].open_follow_up_count, 1);
         assert!(!active.columns.iter().any(|column| column.status == "WON"));
 
         let with_terminal = service

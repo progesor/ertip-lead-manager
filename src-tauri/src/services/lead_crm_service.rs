@@ -1,6 +1,7 @@
 use chrono::{SecondsFormat, Utc};
 use sqlx::SqlitePool;
 
+use crate::domain::product_interest::is_valid_product_code;
 use crate::error::AppError;
 use crate::repositories::lead_crm_repository::LeadCrmRepository;
 
@@ -72,6 +73,25 @@ impl LeadCrmService {
             .delete_note(contact_id, note_id, &now_utc())
             .await
     }
+
+    pub async fn set_product_interest(
+        &self,
+        contact_id: &str,
+        product_code: &str,
+        included: bool,
+    ) -> Result<bool, AppError> {
+        let contact_id = clean_required(contact_id, "contact id")?;
+        let product_code = product_code.trim().to_ascii_uppercase();
+        if !is_valid_product_code(&product_code) {
+            return Err(AppError::Validation(format!(
+                "unsupported product code {product_code}"
+            )));
+        }
+
+        self.repository
+            .set_product_interest(contact_id, &product_code, included, &now_utc())
+            .await
+    }
 }
 
 fn clean_required<'a>(value: &'a str, label: &str) -> Result<&'a str, AppError> {
@@ -115,6 +135,16 @@ mod tests {
         let database = Database::connect_memory().await.expect("open database");
         let service = LeadCrmService::new(database.pool().clone());
         let result = service.change_status("any", "ARCHIVED").await;
+        assert!(matches!(result, Err(AppError::Validation(_))));
+    }
+
+    #[tokio::test]
+    async fn unsupported_product_is_rejected_before_database_mutation() {
+        let database = Database::connect_memory().await.expect("open database");
+        let service = LeadCrmService::new(database.pool().clone());
+        let result = service
+            .set_product_interest("any", "FUTURE_PRODUCT", true)
+            .await;
         assert!(matches!(result, Err(AppError::Validation(_))));
     }
 }

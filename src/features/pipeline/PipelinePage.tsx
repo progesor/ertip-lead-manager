@@ -316,10 +316,9 @@ export function PipelinePage() {
       <div className="pipeline-board-wrap" aria-busy={loading}>
         <div className="pipeline-board">
           {(board?.columns ?? []).map((column) => (
-            <section
+            <fieldset
               className={`pipeline-column ${dragOverStatus === column.status ? "is-drag-over" : ""}`}
               key={column.status}
-              role="group"
               aria-label={`${statusLabels[column.status]} pipeline kolonu`}
               onDragOver={(event) => {
                 event.preventDefault();
@@ -345,10 +344,9 @@ export function PipelinePage() {
                 {column.cards.map((card) => (
                   <article className={`pipeline-card ${mutatingId === card.id ? "is-mutating" : ""}`} key={card.id}>
                     <div className="pipeline-card-topline">
-                      <div
+                      <button
+                        type="button"
                         className="pipeline-drag-handle"
-                        role="button"
-                        tabIndex={-1}
                         aria-label={`${card.displayName} leadini sürükle`}
                         draggable={mutatingId === null}
                         title="Sürükleyerek başka aşamaya taşı"
@@ -363,7 +361,7 @@ export function PipelinePage() {
                         }}
                       >
                         ⋮⋮
-                      </div>
+                      </button>
                       <Link to={`/leads/${card.id}`}>{card.displayName}</Link>
                       {card.isRepeat ? <span className="pipeline-repeat">Repeat ×{card.submissionCount}</span> : null}
                     </div>
@@ -415,7 +413,7 @@ export function PipelinePage() {
                   </div>
                 ) : null}
               </div>
-            </section>
+            </fieldset>
           ))}
         </div>
 

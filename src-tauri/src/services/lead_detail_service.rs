@@ -3,11 +3,21 @@ use std::collections::BTreeSet;
 use serde::Serialize;
 use sqlx::SqlitePool;
 
+use crate::domain::product_interest::effective_product_interests;
 use crate::error::AppError;
 use crate::repositories::lead_crm_repository::{LeadCrmRepository, LeadNoteRecord};
 use crate::repositories::lead_detail_repository::{
-    LeadActivityRecord, LeadDetailRepository, LeadDetailSubmissionRecord, LeadQualityIssueRecord,
+    LeadActivityRecord, LeadDetailRepository, LeadDetailSubmissionRecord, LeadProductOverrideRecord,
+    LeadQualityIssueRecord,
 };
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LeadDetailProductOverride {
+    pub product_code: String,
+    pub action: String,
+    pub created_at: String,
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -22,7 +32,9 @@ pub struct LeadDetailContact {
     pub updated_at: String,
     pub latest_submission_at: Option<String>,
     pub submission_count: i64,
+    pub automatic_product_interests: Vec<String>,
     pub product_interests: Vec<String>,
+    pub product_overrides: Vec<LeadDetailProductOverride>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -114,14 +126,27 @@ impl LeadDetailService {
         };
 
         let submission_records = self.repository.submissions(contact_id).await?;
-        let mut product_interests = BTreeSet::new();
+        let mut automatic_product_interests = BTreeSet::new();
         let submissions = submission_records
             .into_iter()
             .map(|record| {
                 let products = split_group_concat(&record.product_codes);
-                product_interests.extend(products.iter().cloned());
+                automatic_product_interests.extend(products.iter().cloned());
                 map_submission(record, products)
             })
+            .collect();
+
+        let automatic_product_interests = automatic_product_interests.into_iter().collect::<Vec<_>>();
+        let override_records = self.repository.latest_product_overrides(contact_id).await?;
+        let product_interests = effective_product_interests(
+            automatic_product_interests.clone(),
+            override_records
+                .iter()
+                .map(|record| (record.product_code.clone(), record.action.clone())),
+        );
+        let product_overrides = override_records
+            .into_iter()
+            .map(map_product_override)
             .collect();
 
         let quality_issues = self
@@ -163,7 +188,9 @@ impl LeadDetailService {
                 updated_at: contact.updated_at,
                 latest_submission_at: contact.latest_submission_at,
                 submission_count: contact.submission_count,
-                product_interests: product_interests.into_iter().collect(),
+                automatic_product_interests,
+                product_interests,
+                product_overrides,
             },
             submissions,
             quality_issues,
@@ -222,6 +249,14 @@ fn map_quality_issue(record: LeadQualityIssueRecord) -> LeadDetailQualityIssue {
         status: record.status,
         created_at: record.created_at,
         resolved_at: record.resolved_at,
+    }
+}
+
+fn map_product_override(record: LeadProductOverrideRecord) -> LeadDetailProductOverride {
+    LeadDetailProductOverride {
+        product_code: record.product_code,
+        action: record.action,
+        created_at: record.created_at,
     }
 }
 

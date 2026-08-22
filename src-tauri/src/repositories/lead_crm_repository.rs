@@ -107,7 +107,7 @@ impl LeadCrmRepository {
             contact_id,
             "NOTE_CREATED",
             occurred_at,
-            json!({ "noteId": note_id }),
+            json!({ "noteId": note_id.clone() }),
         )
         .await?;
 

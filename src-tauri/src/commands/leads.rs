@@ -2,7 +2,7 @@ use tauri::State;
 
 use crate::error::CommandError;
 use crate::services::lead_workspace_service::{
-    LeadListRequest, LeadListResponse, LeadWorkspaceService,
+    LeadFilterOptions, LeadListRequest, LeadListResponse, LeadWorkspaceService,
 };
 use crate::state::AppState;
 
@@ -13,6 +13,16 @@ pub async fn list_leads(
 ) -> Result<LeadListResponse, CommandError> {
     LeadWorkspaceService::new(state.database.pool().clone())
         .list(request)
+        .await
+        .map_err(CommandError::from)
+}
+
+#[tauri::command]
+pub async fn get_lead_filter_options(
+    state: State<'_, AppState>,
+) -> Result<LeadFilterOptions, CommandError> {
+    LeadWorkspaceService::new(state.database.pool().clone())
+        .filter_options()
         .await
         .map_err(CommandError::from)
 }

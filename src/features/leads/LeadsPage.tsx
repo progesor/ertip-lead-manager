@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import "./leads.css";
 import type {
   CommandError,
@@ -108,6 +109,7 @@ function clean(value: string) {
 }
 
 export function LeadsPage() {
+  const navigate = useNavigate();
   const [response, setResponse] = useState<LeadListResponse>(emptyResponse);
   const [filterOptions, setFilterOptions] = useState<LeadFilterOptions>(emptyFilterOptions);
   const [search, setSearch] = useState("");
@@ -405,7 +407,14 @@ export function LeadsPage() {
                 <tr key={lead.id}>
                   <td>
                     <div className="lead-primary-line">
-                      <strong>{lead.displayName}</strong>
+                      <button
+                        type="button"
+                        className="lead-name-button"
+                        onClick={() => navigate(`/leads/${lead.id}`)}
+                        title="Lead detayını aç"
+                      >
+                        {lead.displayName}
+                      </button>
                       {lead.isRepeat ? <span className="lead-repeat-badge">Repeat</span> : null}
                     </div>
                     <div className="lead-contact-line">

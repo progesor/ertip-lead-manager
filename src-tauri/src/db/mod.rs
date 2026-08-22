@@ -1,11 +1,6 @@
 use std::path::{Path, PathBuf};
-#[cfg(test)]
-use std::str::FromStr;
 
-use sqlx::sqlite::{
-    SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous,
-};
-use sqlx::SqlitePool;
+use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
 
 use crate::error::AppError;
 
@@ -24,15 +19,9 @@ impl Database {
         let options = SqliteConnectOptions::new()
             .filename(&path)
             .create_if_missing(true)
-            .foreign_keys(true)
-            .journal_mode(SqliteJournalMode::Wal)
-            .synchronous(SqliteSynchronous::Normal);
+            .foreign_keys(true);
 
-        let pool = SqlitePoolOptions::new()
-            .max_connections(5)
-            .connect_with(options)
-            .await?;
-
+        let pool = SqlitePool::connect_with(options).await?;
         sqlx::migrate!("./migrations").run(&pool).await?;
 
         Ok(Self { pool, path })
@@ -40,12 +29,12 @@ impl Database {
 
     #[cfg(test)]
     pub async fn connect_memory() -> Result<Self, AppError> {
-        let options = SqliteConnectOptions::from_str("sqlite::memory:")?.foreign_keys(true);
-        let pool = SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect_with(options)
-            .await?;
+        let options = SqliteConnectOptions::new()
+            .filename(":memory:")
+            .create_if_missing(true)
+            .foreign_keys(true);
 
+        let pool = SqlitePool::connect_with(options).await?;
         sqlx::migrate!("./migrations").run(&pool).await?;
 
         Ok(Self {
@@ -83,7 +72,7 @@ mod tests {
         let database = Database::connect_memory().await.expect("open test database");
         let version = database.schema_version().await.expect("read schema version");
 
-        assert_eq!(version, 2);
+        assert_eq!(version, 3);
     }
 
     #[tokio::test]
@@ -99,7 +88,7 @@ mod tests {
         let contact = repository
             .find_by_id("contact-test-1")
             .await
-            .expect("query contact")
+            .expect("read contact")
             .expect("contact exists");
 
         assert_eq!(contact.id, "contact-test-1");

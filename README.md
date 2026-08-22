@@ -2,11 +2,23 @@
 
 Windows-first, local-first lead management and analytics application for Meta lead exports used by Ertip Medical.
 
-> Status: **M1 — Desktop Foundation in progress** on `feat/m1-foundation`.
+> Status: **M3 — Lead Workspace in progress** on `feat/m3-lead-workspace`. M0, M1 and M2 are complete and merged to `main`.
 
 ## Product summary
 
-Ertip Lead Manager imports manually downloaded `.xlsx` lead files, preserves the original source data, detects duplicate/repeat submissions, supports legacy free-text and new multi-select product interests, and provides a fast Windows desktop workspace for reviewing, qualifying, following up, and analyzing leads.
+Ertip Lead Manager imports manually downloaded `.xlsx` and `.csv` lead files, preserves immutable source data, detects duplicate/repeat submissions, supports legacy free-text and structured multi-select product interests, and provides a Windows desktop workspace for reviewing and managing leads.
+
+The current M3 workspace includes:
+
+- real SQLite-backed lead list;
+- search/filter/sort/pagination;
+- dynamic country filtering with Turkish country names;
+- platform, repeat and data-quality indicators;
+- lead detail with all linked submissions and raw source fields;
+- CRM lifecycle status changes;
+- editable CRM notes with audit events;
+- manual contact-level product-interest corrections stored separately from imported source data;
+- activity history.
 
 V1 deliberately does **not** connect to Google Sheets, Meta APIs, WhatsApp APIs, cloud databases, or multi-user authentication. Core workflows remain usable offline.
 
@@ -28,7 +40,7 @@ Read these before changing product behavior or architecture:
 
 `AGENTS.md` contains implementation rules for AI-assisted development.
 
-## M1 stack
+## Application stack
 
 - Tauri 2
 - React 19 + TypeScript
@@ -36,10 +48,9 @@ Read these before changing product behavior or architecture:
 - Tailwind CSS 4
 - Rust backend commands
 - SQLite via SQLx
+- Calamine + Rust `csv` for manual lead import
 - Vitest + React Testing Library
 - Biome for linting/formatting
-
-Feature-specific libraries such as TanStack Table, Recharts, Zod and Calamine are added in the milestone where they are first used rather than preloaded into the M1 shell.
 
 ## Windows development prerequisites
 
@@ -84,7 +95,7 @@ The internal V1 packaging target is an unsigned NSIS per-user installer until co
 
 ## Local data
 
-The SQLite database is created below Tauri's Windows application-data directory for the identifier `com.ertipmedical.leadmanager`. The exact resolved path is shown under **Ayarlar → Sistem Bilgisi**. Application data is not automatically deleted by retention policy.
+The SQLite database is created below Tauri's Windows application-data directory for the identifier `com.ertipmedical.leadmanager`. The exact resolved path and current schema version are shown under **Ayarlar → Sistem Bilgisi**. Application data is not automatically deleted by retention policy.
 
 ## Privacy
 

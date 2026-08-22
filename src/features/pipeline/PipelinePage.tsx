@@ -108,7 +108,8 @@ function moveCardLocally(
     };
   });
 
-  if (!movedCard) return board;
+  const cardToMove = movedCard;
+  if (!cardToMove) return board;
 
   let targetVisible = false;
   const nextColumns = withoutSource.map((column) => {
@@ -116,7 +117,7 @@ function moveCardLocally(
     targetVisible = true;
 
     const nextCards = [
-      { ...movedCard!, status: targetStatus },
+      { ...cardToMove, status: targetStatus },
       ...column.cards.filter((item) => item.id !== contactId),
     ].slice(0, board.perColumnLimit);
     const nextTotal = column.total + 1;
@@ -318,6 +319,8 @@ export function PipelinePage() {
             <section
               className={`pipeline-column ${dragOverStatus === column.status ? "is-drag-over" : ""}`}
               key={column.status}
+              role="group"
+              aria-label={`${statusLabels[column.status]} pipeline kolonu`}
               onDragOver={(event) => {
                 event.preventDefault();
                 if (dragging && dragging.status !== column.status) setDragOverStatus(column.status);
@@ -344,6 +347,9 @@ export function PipelinePage() {
                     <div className="pipeline-card-topline">
                       <div
                         className="pipeline-drag-handle"
+                        role="button"
+                        tabIndex={-1}
+                        aria-label={`${card.displayName} leadini sürükle`}
                         draggable={mutatingId === null}
                         title="Sürükleyerek başka aşamaya taşı"
                         onDragStart={(event) => {

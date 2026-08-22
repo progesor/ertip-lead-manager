@@ -1,0 +1,27 @@
+.lead-name-button {
+  max-width: 260px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: #253040;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.lead-name-button:hover {
+  color: #315d82;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.lead-name-button:focus-visible {
+  outline: 2px solid #9bb8d2;
+  outline-offset: 2px;
+  border-radius: 3px;
+}

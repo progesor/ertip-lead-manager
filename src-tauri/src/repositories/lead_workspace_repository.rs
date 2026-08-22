@@ -40,6 +40,7 @@ pub struct LeadListRecord {
     pub submission_count: i64,
     pub product_codes: Vec<String>,
     pub warning_count: i64,
+    pub warning_types: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -78,7 +79,13 @@ impl LeadWorkspaceRepository {
                     FROM lead_data_quality_issues q
                     WHERE q.lead_contact_id = c.id
                       AND q.status = 'OPEN'
-                ) AS warning_count
+                ) AS warning_count,
+                COALESCE((
+                    SELECT GROUP_CONCAT(DISTINCT q.issue_type)
+                    FROM lead_data_quality_issues q
+                    WHERE q.lead_contact_id = c.id
+                      AND q.status = 'OPEN'
+                ), '') AS warning_types
             FROM lead_contacts c
             "#,
         );
@@ -93,6 +100,7 @@ impl LeadWorkspaceRepository {
             .into_iter()
             .map(|row| {
                 let raw_products: String = row.get("product_codes");
+                let raw_warning_types: String = row.get("warning_types");
                 LeadListRecord {
                     id: row.get("id"),
                     display_name: row.get("display_name"),
@@ -102,12 +110,9 @@ impl LeadWorkspaceRepository {
                     status: row.get("status"),
                     latest_submission_at: row.get("latest_submission_at"),
                     submission_count: row.get("submission_count"),
-                    product_codes: raw_products
-                        .split(',')
-                        .filter(|value| !value.is_empty())
-                        .map(ToOwned::to_owned)
-                        .collect(),
+                    product_codes: split_group_concat(&raw_products),
                     warning_count: row.get("warning_count"),
+                    warning_types: split_group_concat(&raw_warning_types),
                 }
             })
             .collect();
@@ -121,6 +126,14 @@ impl LeadWorkspaceRepository {
         let count = builder.build_query_scalar::<i64>().fetch_one(&self.pool).await?;
         Ok(count)
     }
+}
+
+fn split_group_concat(value: &str) -> Vec<String> {
+    value
+        .split(',')
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
 }
 
 fn append_filters(builder: &mut QueryBuilder<'_, Sqlite>, filters: &LeadListFilters) {
@@ -293,6 +306,7 @@ mod tests {
         assert_eq!(rows[0].id, "contact-a");
         assert_eq!(rows[0].submission_count, 2);
         assert_eq!(rows[0].warning_count, 1);
+        assert_eq!(rows[0].warning_types, vec!["UNKNOWN_PRODUCT"]);
         assert_eq!(rows[0].product_codes, vec!["FUE_PUNCHES"]);
     }
 }

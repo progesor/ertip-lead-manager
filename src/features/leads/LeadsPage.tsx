@@ -4,6 +4,7 @@ import "./leads.css";
 import type {
   CommandError,
   DataQualityIssueType,
+  LeadFilterOptions,
   LeadListResponse,
   LeadListSort,
   LeadStatus,
@@ -42,6 +43,13 @@ const warningLabels: Record<DataQualityIssueType, string> = {
   UNKNOWN_PRODUCT: "Ürün cevabı eşleşmedi",
 };
 
+const platformLabels: Record<string, string> = {
+  facebook: "Facebook",
+  instagram: "Instagram",
+  messenger: "Messenger",
+  audience_network: "Audience Network",
+};
+
 const productOptions = Object.entries(productLabels) as Array<[ProductCode, string]>;
 const statusOptions = Object.entries(statusLabels) as Array<[LeadStatus, string]>;
 const regionNames = new Intl.DisplayNames(["tr"], { type: "region" });
@@ -52,6 +60,10 @@ const emptyResponse: LeadListResponse = {
   page: 0,
   pageSize: PAGE_SIZE,
   totalPages: 0,
+};
+
+const emptyFilterOptions: LeadFilterOptions = {
+  countries: [],
 };
 
 function formatDate(value: string | null) {
@@ -77,6 +89,11 @@ function formatCountry(countryCode: string | null) {
   }
 }
 
+function formatPlatform(platform: string) {
+  const normalized = platform.trim().toLowerCase();
+  return platformLabels[normalized] ?? normalized.replaceAll("_", " ");
+}
+
 function commandErrorMessage(error: unknown) {
   if (typeof error === "object" && error !== null && "message" in error) {
     return String((error as CommandError).message);
@@ -92,9 +109,12 @@ function clean(value: string) {
 
 export function LeadsPage() {
   const [response, setResponse] = useState<LeadListResponse>(emptyResponse);
+  const [filterOptions, setFilterOptions] = useState<LeadFilterOptions>(emptyFilterOptions);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<LeadStatus | "">("");
   const [country, setCountry] = useState("");
+  const [countryQuery, setCountryQuery] = useState("");
+  const [countryOpen, setCountryOpen] = useState(false);
   const [product, setProduct] = useState<ProductCode | "">("");
   const [repeatOnly, setRepeatOnly] = useState(false);
   const [warningOnly, setWarningOnly] = useState(false);
@@ -114,7 +134,7 @@ export function LeadsPage() {
         request: {
           search: clean(search),
           status: status || null,
-          countryCode: clean(country)?.toUpperCase() ?? null,
+          countryCode: country || null,
           productCode: product || null,
           repeatOnly,
           warningOnly,
@@ -139,6 +159,12 @@ export function LeadsPage() {
   }, [country, page, product, repeatOnly, search, sort, status, warningOnly]);
 
   useEffect(() => {
+    void invoke<LeadFilterOptions>("get_lead_filter_options")
+      .then(setFilterOptions)
+      .catch((loadError) => setError((current) => current ?? commandErrorMessage(loadError)));
+  }, []);
+
+  useEffect(() => {
     const timer = window.setTimeout(() => {
       void loadLeads();
     }, search.trim().length > 0 ? 220 : 0);
@@ -154,6 +180,8 @@ export function LeadsPage() {
     setSearch("");
     setStatus("");
     setCountry("");
+    setCountryQuery("");
+    setCountryOpen(false);
     setProduct("");
     setRepeatOnly(false);
     setWarningOnly(false);
@@ -161,9 +189,24 @@ export function LeadsPage() {
     setPage(0);
   }
 
+  function selectCountry(code: string) {
+    setCountry(code);
+    setCountryQuery("");
+    setCountryOpen(false);
+    resetPage();
+  }
+
   const start = response.total === 0 ? 0 : response.page * response.pageSize + 1;
   const end = Math.min(response.total, (response.page + 1) * response.pageSize);
-  const hasFilters = Boolean(search || status || country || product || repeatOnly || warningOnly);
+  const hasFilters = Boolean(search || status || country || countryQuery || product || repeatOnly || warningOnly);
+  const normalizedCountryQuery = countryQuery.trim().toLocaleLowerCase("tr-TR");
+  const filteredCountries = filterOptions.countries.filter((code) => {
+    if (!normalizedCountryQuery) return true;
+    return (
+      code.toLocaleLowerCase("tr-TR").includes(normalizedCountryQuery) ||
+      formatCountry(code).toLocaleLowerCase("tr-TR").includes(normalizedCountryQuery)
+    );
+  });
 
   return (
     <section className="page-stack leads-page">
@@ -212,18 +255,65 @@ export function LeadsPage() {
             </select>
           </label>
 
-          <label className="leads-country-field">
-            <span>Ülke Kodu</span>
-            <input
-              value={country}
-              maxLength={2}
-              onChange={(event) => {
-                setCountry(event.target.value.toUpperCase().replace(/[^A-Z]/g, ""));
-                resetPage();
-              }}
-              placeholder="TR"
-            />
-          </label>
+          <div className="leads-country-combobox">
+            <span className="leads-field-label">Ülke</span>
+            <div className="leads-country-input-wrap">
+              <input
+                type="search"
+                value={country ? formatCountry(country) : countryQuery}
+                onFocus={() => setCountryOpen(true)}
+                onBlur={() => window.setTimeout(() => setCountryOpen(false), 120)}
+                onChange={(event) => {
+                  setCountry("");
+                  setCountryQuery(event.target.value);
+                  setCountryOpen(true);
+                  resetPage();
+                }}
+                placeholder="Kod veya ülke ara"
+                aria-label="Ülke filtresi"
+                aria-expanded={countryOpen}
+              />
+              {(country || countryQuery) ? (
+                <button
+                  type="button"
+                  className="leads-country-clear"
+                  aria-label="Ülke filtresini temizle"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    setCountry("");
+                    setCountryQuery("");
+                    setCountryOpen(false);
+                    resetPage();
+                  }}
+                >
+                  ×
+                </button>
+              ) : null}
+            </div>
+            {countryOpen ? (
+              <div className="leads-country-menu" role="listbox">
+                {filteredCountries.length > 0 ? (
+                  filteredCountries.map((code) => (
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={country === code}
+                      key={code}
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                        selectCountry(code);
+                      }}
+                    >
+                      <strong>{code}</strong>
+                      <span>{formatCountry(code).replace(`${code} · `, "")}</span>
+                    </button>
+                  ))
+                ) : (
+                  <div className="leads-country-empty">Eşleşen ülke yok</div>
+                )}
+              </div>
+            ) : null}
+          </div>
 
           <label>
             <span>Ürün İlgisi</span>
@@ -300,6 +390,7 @@ export function LeadsPage() {
                 <th>Lead</th>
                 <th>Durum</th>
                 <th>Ülke</th>
+                <th>Platform</th>
                 <th>Ürün İlgisi</th>
                 <th>Submission</th>
                 <th>Veri Uyarısı</th>
@@ -332,6 +423,19 @@ export function LeadsPage() {
                     </span>
                   </td>
                   <td>
+                    <div className="lead-platform-list">
+                      {lead.platforms.length > 0 ? (
+                        lead.platforms.map((platform) => (
+                          <span className={`lead-platform-chip lead-platform-${platform}`} key={platform}>
+                            {formatPlatform(platform)}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="lead-muted">—</span>
+                      )}
+                    </div>
+                  </td>
+                  <td>
                     <div className="lead-product-list">
                       {lead.productInterests.length > 0 ? (
                         lead.productInterests.map((code) => (
@@ -352,14 +456,12 @@ export function LeadsPage() {
                   <td>
                     {lead.warningCount > 0 ? (
                       <div className="lead-warning-list">
-                        {lead.warningTypes.map((warning) => (
-                          <span className="lead-warning-detail" key={warning}>
-                            {warningLabels[warning] ?? warning}
+                        {lead.warningSummaries.map((warning) => (
+                          <span className="lead-warning-detail" key={warning.issueType}>
+                            {warningLabels[warning.issueType] ?? warning.issueType}
+                            {warning.count > 1 ? ` ×${warning.count}` : ""}
                           </span>
                         ))}
-                        {lead.warningCount > lead.warningTypes.length ? (
-                          <span className="lead-warning-badge">{lead.warningCount} uyarı</span>
-                        ) : null}
                       </div>
                     ) : (
                       <span className="lead-muted">—</span>

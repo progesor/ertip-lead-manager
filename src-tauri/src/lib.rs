@@ -42,6 +42,7 @@ pub fn run() {
             commands::imports::list_import_history,
             commands::leads::list_leads,
             commands::leads::get_lead_filter_options,
+            commands::leads::get_lead_detail,
         ])
         .run(tauri::generate_context!())
         .expect("Ertip Lead Manager çalıştırılamadı");

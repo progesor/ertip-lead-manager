@@ -1,0 +1,147 @@
+.lead-effective-products {
+  min-height: 26px;
+  margin-top: 10px;
+}
+
+.lead-product-editor {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 13px;
+  padding-top: 12px;
+  border-top: 1px solid #edf0f3;
+}
+
+.lead-product-option {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 6px 8px;
+  border: 1px solid #e4e8ed;
+  border-radius: 8px;
+  background: #fafbfc;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.lead-product-option:hover {
+  border-color: #cfd9e3;
+  background: #f8fafc;
+}
+
+.lead-product-option.is-included {
+  border-color: #cad9e7;
+  background: #f5f9fc;
+}
+
+.lead-product-option input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #4f7697;
+}
+
+.lead-product-option input:disabled {
+  cursor: wait;
+}
+
+.lead-product-option-label {
+  min-width: 0;
+  color: #4d5968;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.lead-product-source {
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: #f0f2f5;
+  color: #7f8997;
+  font-size: 8px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.lead-product-source-source {
+  background: #eef3f7;
+  color: #5d7287;
+}
+
+.lead-product-source-added {
+  background: #edf8f2;
+  color: #46745a;
+}
+
+.lead-product-source-removed {
+  background: #fff1f1;
+  color: #945858;
+}
+
+.lead-product-source-none {
+  background: #f4f5f7;
+  color: #929baa;
+}
+
+.lead-note-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid #f0f2f4;
+}
+
+.lead-note-footer > span {
+  color: #959eaa;
+  font-size: 8px;
+}
+
+.lead-note-footer > div {
+  display: flex;
+  gap: 5px;
+}
+
+.lead-note-footer button {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid #dfe4ea;
+  border-radius: 7px;
+  background: #fff;
+  color: #5f6c7b;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.lead-note-footer button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.lead-note-footer button.is-primary {
+  border-color: #bfd2e4;
+  background: #f2f7fb;
+  color: #315d82;
+}
+
+.lead-note-footer button.is-danger {
+  border-color: #efd7d7;
+  color: #9a5656;
+}
+
+.lead-activity-detail {
+  color: #697586;
+  font-size: 9px;
+  font-weight: 650;
+}
+
+@media (max-width: 1050px) {
+  .lead-product-editor {
+    grid-template-columns: 1fr;
+  }
+}

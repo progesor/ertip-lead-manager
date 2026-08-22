@@ -23,6 +23,10 @@ pub enum AppError {
     CsvEncoding,
     #[error("XLSX parse error: {0}")]
     Xlsx(#[from] calamine::Error),
+    #[error("validation error: {0}")]
+    Validation(String),
+    #[error("record not found: {0}")]
+    NotFound(String),
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -60,6 +64,20 @@ impl CommandError {
             message: "İçe aktarım, çözülmesi gereken kimlik çakışması veya satır hatası içeriyor.",
         }
     }
+
+    fn validation() -> Self {
+        Self {
+            code: "VALIDATION_ERROR",
+            message: "Girilen CRM bilgisi geçerli değil.",
+        }
+    }
+
+    fn not_found() -> Self {
+        Self {
+            code: "NOT_FOUND",
+            message: "İstenen lead veya CRM kaydı bulunamadı.",
+        }
+    }
 }
 
 impl From<AppError> for CommandError {
@@ -70,6 +88,8 @@ impl From<AppError> for CommandError {
             AppError::AppData(_) | AppError::Io(_) => Self::app_data(),
             AppError::Database(_) | AppError::Migration(_) => Self::database(),
             AppError::ImportBlocked(_) => Self::import_blocked(),
+            AppError::Validation(_) => Self::validation(),
+            AppError::NotFound(_) => Self::not_found(),
             AppError::UnsupportedFileType(_)
             | AppError::ImportSchema(_)
             | AppError::Csv(_)
@@ -106,5 +126,17 @@ mod tests {
         let error = CommandError::from(AppError::ImportBlocked("identity conflict".to_string()));
 
         assert_eq!(error.code, "IMPORT_BLOCKED");
+    }
+
+    #[test]
+    fn crm_validation_and_not_found_have_stable_categories() {
+        assert_eq!(
+            CommandError::from(AppError::Validation("bad status".to_string())).code,
+            "VALIDATION_ERROR"
+        );
+        assert_eq!(
+            CommandError::from(AppError::NotFound("missing note".to_string())).code,
+            "NOT_FOUND"
+        );
     }
 }

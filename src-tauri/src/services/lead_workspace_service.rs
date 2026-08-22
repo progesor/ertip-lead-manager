@@ -37,6 +37,7 @@ pub struct LeadListItem {
     pub is_repeat: bool,
     pub product_interests: Vec<String>,
     pub warning_count: i64,
+    pub warning_types: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -108,6 +109,7 @@ impl LeadWorkspaceService {
                 is_repeat: record.submission_count > 1,
                 product_interests: record.product_codes,
                 warning_count: record.warning_count,
+                warning_types: record.warning_types,
             })
             .collect();
 

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import "./leads.css";
 import type {
   CommandError,
+  DataQualityIssueType,
   LeadListResponse,
   LeadListSort,
   LeadStatus,
@@ -32,8 +33,18 @@ const productLabels: Record<ProductCode, string> = {
   UNKNOWN: "Bilinmiyor",
 };
 
+const warningLabels: Record<DataQualityIssueType, string> = {
+  INVALID_EMAIL: "Geçersiz e-posta",
+  INVALID_PHONE: "Geçersiz telefon",
+  INVALID_COUNTRY: "Geçersiz ülke kodu",
+  INVALID_TIMESTAMP: "Geçersiz lead tarihi",
+  MISSING_CONTACT_METHOD: "İletişim bilgisi yok",
+  UNKNOWN_PRODUCT: "Ürün cevabı eşleşmedi",
+};
+
 const productOptions = Object.entries(productLabels) as Array<[ProductCode, string]>;
 const statusOptions = Object.entries(statusLabels) as Array<[LeadStatus, string]>;
+const regionNames = new Intl.DisplayNames(["tr"], { type: "region" });
 
 const emptyResponse: LeadListResponse = {
   items: [],
@@ -51,6 +62,19 @@ function formatDate(value: string | null) {
     dateStyle: "short",
     timeStyle: "short",
   }).format(date);
+}
+
+function formatCountry(countryCode: string | null) {
+  if (!countryCode) return "—";
+  const code = countryCode.trim().toUpperCase();
+  if (code.length !== 2) return code;
+
+  try {
+    const name = regionNames.of(code);
+    return name && name !== code ? `${code} · ${name}` : code;
+  } catch {
+    return code;
+  }
 }
 
 function commandErrorMessage(error: unknown) {
@@ -147,11 +171,11 @@ export function LeadsPage() {
         <div>
           <div className="eyebrow">LEAD WORKSPACE</div>
           <h1>Leadler</h1>
-          <p>İçe aktarılan contact kayıtlarını ara, filtrele ve günlük satış çalışmasına hazırla.</p>
+          <p>İçe aktarılan benzersiz kişileri ara, filtrele ve günlük satış çalışmasına hazırla.</p>
         </div>
         <div className="leads-heading-summary">
           <strong>{response.total}</strong>
-          <span>contact</span>
+          <span>benzersiz kişi</span>
         </div>
       </div>
 
@@ -189,7 +213,7 @@ export function LeadsPage() {
           </label>
 
           <label className="leads-country-field">
-            <span>Ülke</span>
+            <span>Ülke Kodu</span>
             <input
               value={country}
               maxLength={2}
@@ -278,7 +302,7 @@ export function LeadsPage() {
                 <th>Ülke</th>
                 <th>Ürün İlgisi</th>
                 <th>Submission</th>
-                <th>Uyarı</th>
+                <th>Veri Uyarısı</th>
                 <th>Son Lead</th>
               </tr>
             </thead>
@@ -302,7 +326,11 @@ export function LeadsPage() {
                       {statusLabels[lead.status]}
                     </span>
                   </td>
-                  <td>{lead.countryCode ?? "—"}</td>
+                  <td>
+                    <span className="lead-country" title={lead.countryCode ?? undefined}>
+                      {formatCountry(lead.countryCode)}
+                    </span>
+                  </td>
                   <td>
                     <div className="lead-product-list">
                       {lead.productInterests.length > 0 ? (
@@ -317,11 +345,22 @@ export function LeadsPage() {
                     </div>
                   </td>
                   <td>
-                    <span className="lead-count-badge">{lead.submissionCount}</span>
+                    <span className="lead-count-badge" title={`${lead.submissionCount} ayrı form kaydı`}>
+                      {lead.submissionCount}
+                    </span>
                   </td>
                   <td>
                     {lead.warningCount > 0 ? (
-                      <span className="lead-warning-badge">{lead.warningCount}</span>
+                      <div className="lead-warning-list">
+                        {lead.warningTypes.map((warning) => (
+                          <span className="lead-warning-detail" key={warning}>
+                            {warningLabels[warning] ?? warning}
+                          </span>
+                        ))}
+                        {lead.warningCount > lead.warningTypes.length ? (
+                          <span className="lead-warning-badge">{lead.warningCount} uyarı</span>
+                        ) : null}
+                      </div>
                     ) : (
                       <span className="lead-muted">—</span>
                     )}

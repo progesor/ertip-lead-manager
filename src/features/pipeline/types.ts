@@ -13,6 +13,8 @@ export interface PipelineCard {
   productInterests: ProductCode[];
   platforms: string[];
   warningCount: number;
+  nextFollowUpAt: string | null;
+  openFollowUpCount: number;
 }
 
 export interface PipelineColumn {

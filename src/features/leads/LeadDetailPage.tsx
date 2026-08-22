@@ -1,10 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useState } from "react";
+import { confirm } from "@tauri-apps/plugin-dialog";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import "./lead-detail.css";
 import type {
   CommandError,
   DataQualityIssueType,
+  LeadDetailActivity,
+  LeadDetailNote,
   LeadDetailResponse,
   LeadStatus,
   ProductCode,
@@ -20,6 +23,8 @@ const statusLabels: Record<LeadStatus, string> = {
   LOST: "Kaybedildi",
   INVALID: "Geçersiz",
 };
+
+const statusOptions = Object.entries(statusLabels) as Array<[LeadStatus, string]>;
 
 const productLabels: Record<ProductCode, string> = {
   FUE_MICROMOTOR_SYSTEMS: "FUE Micromotor",
@@ -46,6 +51,7 @@ const activityLabels: Record<string, string> = {
   STATUS_CHANGED: "Durum değiştirildi",
   NOTE_CREATED: "Not eklendi",
   NOTE_UPDATED: "Not güncellendi",
+  NOTE_DELETED: "Not silindi",
 };
 
 const regionNames = new Intl.DisplayNames(["tr"], { type: "region" });
@@ -94,7 +100,22 @@ function commandErrorMessage(error: unknown) {
     return String((error as CommandError).message);
   }
   if (typeof error === "string") return error;
-  return "Lead detayı yüklenemedi.";
+  return "CRM işlemi tamamlanamadı.";
+}
+
+function activityDetail(activity: LeadDetailActivity) {
+  if (activity.activityType !== "STATUS_CHANGED") return null;
+
+  try {
+    const payload = JSON.parse(activity.payloadJson) as {
+      fromStatus?: LeadStatus;
+      toStatus?: LeadStatus;
+    };
+    if (!payload.fromStatus || !payload.toStatus) return null;
+    return `${statusLabels[payload.fromStatus] ?? payload.fromStatus} → ${statusLabels[payload.toStatus] ?? payload.toStatus}`;
+  } catch {
+    return null;
+  }
 }
 
 export function LeadDetailPage() {
@@ -103,28 +124,139 @@ export function LeadDetailPage() {
   const [detail, setDetail] = useState<LeadDetailResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [statusDraft, setStatusDraft] = useState<LeadStatus>("NEW");
+  const [noteDraft, setNoteDraft] = useState("");
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingNoteBody, setEditingNoteBody] = useState("");
+  const [mutating, setMutating] = useState<string | null>(null);
+
+  const fetchDetail = useCallback(async () => {
+    if (!leadId) throw new Error("Lead kimliği bulunamadı.");
+    const response = await invoke<LeadDetailResponse | null>("get_lead_detail", { contactId: leadId });
+    if (!response) throw new Error("Lead kaydı bulunamadı.");
+    setDetail(response);
+    setStatusDraft(response.contact.status);
+    return response;
+  }, [leadId]);
 
   useEffect(() => {
-    if (!leadId) {
-      setError("Lead kimliği bulunamadı.");
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     setError(null);
-    void invoke<LeadDetailResponse | null>("get_lead_detail", { contactId: leadId })
-      .then((response) => {
-        if (!response) {
-          setError("Lead kaydı bulunamadı.");
-          setDetail(null);
-          return;
-        }
-        setDetail(response);
+    void fetchDetail()
+      .catch((loadError) => {
+        setError(commandErrorMessage(loadError));
+        setDetail(null);
       })
-      .catch((loadError) => setError(commandErrorMessage(loadError)))
       .finally(() => setLoading(false));
-  }, [leadId]);
+  }, [fetchDetail]);
+
+  async function refreshDetail() {
+    try {
+      await fetchDetail();
+    } catch (refreshError) {
+      setError(commandErrorMessage(refreshError));
+    }
+  }
+
+  async function saveStatus() {
+    if (!detail || statusDraft === detail.contact.status) return;
+    setMutating("status");
+    setError(null);
+    setNotice(null);
+    try {
+      const changed = await invoke<boolean>("change_lead_status", {
+        contactId: detail.contact.id,
+        newStatus: statusDraft,
+      });
+      setNotice(changed ? `Durum ${statusLabels[statusDraft]} olarak güncellendi.` : "Durum zaten günceldi.");
+      await refreshDetail();
+    } catch (mutationError) {
+      setError(commandErrorMessage(mutationError));
+    } finally {
+      setMutating(null);
+    }
+  }
+
+  async function addNote() {
+    if (!detail || !noteDraft.trim()) return;
+    setMutating("note-create");
+    setError(null);
+    setNotice(null);
+    try {
+      await invoke<string>("create_lead_note", {
+        contactId: detail.contact.id,
+        body: noteDraft,
+      });
+      setNoteDraft("");
+      setNotice("Not eklendi.");
+      await refreshDetail();
+    } catch (mutationError) {
+      setError(commandErrorMessage(mutationError));
+    } finally {
+      setMutating(null);
+    }
+  }
+
+  function beginEditNote(note: LeadDetailNote) {
+    setEditingNoteId(note.id);
+    setEditingNoteBody(note.body);
+    setNotice(null);
+    setError(null);
+  }
+
+  async function saveEditedNote() {
+    if (!detail || !editingNoteId || !editingNoteBody.trim()) return;
+    setMutating(`note-update:${editingNoteId}`);
+    setError(null);
+    setNotice(null);
+    try {
+      await invoke<boolean>("update_lead_note", {
+        contactId: detail.contact.id,
+        noteId: editingNoteId,
+        body: editingNoteBody,
+      });
+      setEditingNoteId(null);
+      setEditingNoteBody("");
+      setNotice("Not güncellendi.");
+      await refreshDetail();
+    } catch (mutationError) {
+      setError(commandErrorMessage(mutationError));
+    } finally {
+      setMutating(null);
+    }
+  }
+
+  async function removeNote(note: LeadDetailNote) {
+    if (!detail) return;
+    const accepted = await confirm("Bu not silinecek. İşlem activity geçmişinde kayıtlı kalacak. Devam edilsin mi?", {
+      title: "Notu Sil",
+      kind: "warning",
+      okLabel: "Sil",
+      cancelLabel: "Vazgeç",
+    });
+    if (!accepted) return;
+
+    setMutating(`note-delete:${note.id}`);
+    setError(null);
+    setNotice(null);
+    try {
+      await invoke("delete_lead_note", {
+        contactId: detail.contact.id,
+        noteId: note.id,
+      });
+      if (editingNoteId === note.id) {
+        setEditingNoteId(null);
+        setEditingNoteBody("");
+      }
+      setNotice("Not silindi.");
+      await refreshDetail();
+    } catch (mutationError) {
+      setError(commandErrorMessage(mutationError));
+    } finally {
+      setMutating(null);
+    }
+  }
 
   if (loading) {
     return (
@@ -134,14 +266,16 @@ export function LeadDetailPage() {
     );
   }
 
-  if (error || !detail) {
+  if (error && !detail) {
     return (
       <section className="page-stack lead-detail-page">
         <button type="button" className="lead-back-button" onClick={() => navigate("/leads")}>← Leadlere Dön</button>
-        <div className="import-error" role="alert">{error ?? "Lead detayı bulunamadı."}</div>
+        <div className="import-error" role="alert">{error}</div>
       </section>
     );
   }
+
+  if (!detail) return null;
 
   const { contact } = detail;
   const openIssues = detail.qualityIssues.filter((issue) => issue.status === "OPEN");
@@ -152,6 +286,9 @@ export function LeadDetailPage() {
         <button type="button" className="lead-back-button" onClick={() => navigate("/leads")}>← Leadlere Dön</button>
         <span className="lead-detail-id" title={contact.id}>{contact.id}</span>
       </div>
+
+      {error ? <div className="import-error" role="alert">{error}</div> : null}
+      {notice ? <div className="import-success" role="status">{notice}</div> : null}
 
       <article className="panel lead-detail-hero">
         <div className="lead-detail-identity">
@@ -169,10 +306,35 @@ export function LeadDetailPage() {
             <span>{formatCountry(contact.countryCode)}</span>
           </div>
         </div>
-        <div className="lead-detail-metrics">
-          <div><strong>{contact.submissionCount}</strong><span>submission</span></div>
-          <div><strong>{openIssues.length}</strong><span>açık uyarı</span></div>
-          <div><strong>{formatDate(contact.latestSubmissionAt)}</strong><span>son lead</span></div>
+
+        <div className="lead-detail-crm-actions">
+          <div className="lead-status-editor">
+            <label htmlFor="lead-status-select">CRM Durumu</label>
+            <div>
+              <select
+                id="lead-status-select"
+                value={statusDraft}
+                onChange={(event) => setStatusDraft(event.target.value as LeadStatus)}
+                disabled={mutating !== null}
+              >
+                {statusOptions.map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={saveStatus}
+                disabled={mutating !== null || statusDraft === contact.status}
+              >
+                {mutating === "status" ? "Kaydediliyor…" : "Durumu Kaydet"}
+              </button>
+            </div>
+          </div>
+          <div className="lead-detail-metrics">
+            <div><strong>{contact.submissionCount}</strong><span>submission</span></div>
+            <div><strong>{openIssues.length}</strong><span>açık uyarı</span></div>
+            <div><strong>{formatDate(contact.latestSubmissionAt)}</strong><span>son lead</span></div>
+          </div>
         </div>
       </article>
 
@@ -217,6 +379,106 @@ export function LeadDetailPage() {
           )}
         </article>
       </div>
+
+      <article className="panel lead-detail-notes-panel">
+        <div className="panel-heading">
+          <div>
+            <h2>CRM Notları</h2>
+            <p>İçe aktarımdan bağımsız, kullanıcı tarafından yönetilen satış notları.</p>
+          </div>
+          <span className="placeholder-pill">{detail.notes.length} not</span>
+        </div>
+
+        <div className="lead-note-compose">
+          <textarea
+            value={noteDraft}
+            maxLength={5000}
+            rows={3}
+            onChange={(event) => setNoteDraft(event.target.value)}
+            placeholder="Görüşme, talep, fiyat beklentisi veya sonraki adımla ilgili not ekleyin…"
+            disabled={mutating !== null}
+          />
+          <div>
+            <span>{noteDraft.length} / 5000</span>
+            <button
+              type="button"
+              onClick={addNote}
+              disabled={mutating !== null || !noteDraft.trim()}
+            >
+              {mutating === "note-create" ? "Ekleniyor…" : "Not Ekle"}
+            </button>
+          </div>
+        </div>
+
+        {detail.notes.length > 0 ? (
+          <div className="lead-note-list">
+            {detail.notes.map((note) => {
+              const editing = editingNoteId === note.id;
+              return (
+                <article className="lead-note-card" key={note.id}>
+                  {editing ? (
+                    <textarea
+                      value={editingNoteBody}
+                      maxLength={5000}
+                      rows={3}
+                      onChange={(event) => setEditingNoteBody(event.target.value)}
+                      disabled={mutating !== null}
+                    />
+                  ) : (
+                    <p>{note.body}</p>
+                  )}
+                  <div className="lead-note-meta">
+                    <span>
+                      {formatDate(note.createdAt)}
+                      {note.updatedAt !== note.createdAt ? ` · güncellendi ${formatDate(note.updatedAt)}` : ""}
+                    </span>
+                    <div>
+                      {editing ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingNoteId(null);
+                              setEditingNoteBody("");
+                            }}
+                            disabled={mutating !== null}
+                          >
+                            Vazgeç
+                          </button>
+                          <button
+                            type="button"
+                            className="is-primary"
+                            onClick={saveEditedNote}
+                            disabled={mutating !== null || !editingNoteBody.trim()}
+                          >
+                            {mutating === `note-update:${note.id}` ? "Kaydediliyor…" : "Kaydet"}
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button type="button" onClick={() => beginEditNote(note)} disabled={mutating !== null}>
+                            Düzenle
+                          </button>
+                          <button
+                            type="button"
+                            className="is-danger"
+                            onClick={() => void removeNote(note)}
+                            disabled={mutating !== null}
+                          >
+                            {mutating === `note-delete:${note.id}` ? "Siliniyor…" : "Sil"}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="lead-detail-empty">Henüz CRM notu yok.</div>
+        )}
+      </article>
 
       <article className="panel lead-detail-submissions-panel">
         <div className="panel-heading">
@@ -281,15 +543,19 @@ export function LeadDetailPage() {
         </div>
         {detail.activities.length > 0 ? (
           <div className="lead-activity-list">
-            {detail.activities.map((activity) => (
-              <div className="lead-activity-row" key={activity.id}>
-                <span className="lead-activity-dot" />
-                <div>
-                  <strong>{activityLabels[activity.activityType] ?? activity.activityType}</strong>
-                  <span>{formatDate(activity.occurredAt)}</span>
+            {detail.activities.map((activity) => {
+              const detailText = activityDetail(activity);
+              return (
+                <div className="lead-activity-row" key={activity.id}>
+                  <span className="lead-activity-dot" />
+                  <div>
+                    <strong>{activityLabels[activity.activityType] ?? activity.activityType}</strong>
+                    {detailText ? <em>{detailText}</em> : null}
+                    <span>{formatDate(activity.occurredAt)}</span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="lead-detail-empty">Henüz aktivite yok.</div>

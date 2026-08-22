@@ -72,6 +72,71 @@ export interface LeadFilterOptions {
   countries: string[];
 }
 
+export interface LeadDetailContact {
+  id: string;
+  displayName: string;
+  primaryEmail: string | null;
+  primaryPhone: string | null;
+  countryCode: string | null;
+  status: LeadStatus;
+  createdAt: string;
+  updatedAt: string;
+  latestSubmissionAt: string | null;
+  submissionCount: number;
+  productInterests: ProductCode[];
+}
+
+export interface LeadDetailSubmission {
+  id: string;
+  externalLeadId: string;
+  sourceCreatedAtUtc: string | null;
+  sourceCreatedAtRaw: string;
+  adId: string | null;
+  adName: string | null;
+  adsetId: string | null;
+  adsetName: string | null;
+  campaignId: string | null;
+  campaignName: string | null;
+  formId: string | null;
+  formName: string | null;
+  isOrganic: boolean | null;
+  platform: string | null;
+  rawProcedureAnswer: string | null;
+  rawProductAnswer: string | null;
+  rawFullName: string | null;
+  rawEmail: string | null;
+  rawPhone: string | null;
+  rawCountry: string | null;
+  rawLeadStatus: string | null;
+  rawPayloadJson: string;
+  productInterests: ProductCode[];
+}
+
+export interface LeadDetailQualityIssue {
+  id: string;
+  leadSubmissionId: string | null;
+  issueType: DataQualityIssueType;
+  severity: string;
+  detailsJson: string;
+  status: string;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+export interface LeadDetailActivity {
+  id: string;
+  activityType: string;
+  occurredAt: string;
+  payloadJson: string;
+}
+
+export interface LeadDetailResponse {
+  contact: LeadDetailContact;
+  submissions: LeadDetailSubmission[];
+  qualityIssues: LeadDetailQualityIssue[];
+  activities: LeadDetailActivity[];
+}
+
 export interface CommandError {
   code: string;
   message: string;

@@ -88,3 +88,16 @@ pub async fn delete_lead_note(
         .await
         .map_err(CommandError::from)
 }
+
+#[tauri::command]
+pub async fn set_lead_product_interest(
+    contact_id: String,
+    product_code: String,
+    included: bool,
+    state: State<'_, AppState>,
+) -> Result<bool, CommandError> {
+    LeadCrmService::new(state.database.pool().clone())
+        .set_product_interest(&contact_id, &product_code, included)
+        .await
+        .map_err(CommandError::from)
+}

@@ -1,0 +1,45 @@
+.lead-assignee-pill {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.lead-assignee-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--success);
+}
+
+.lead-assignee-pill.is-inactive {
+  color: var(--muted);
+  opacity: 0.8;
+}
+
+.lead-assignee-pill.is-inactive .lead-assignee-dot {
+  background: var(--muted);
+}
+
+.lead-assignee-pill em {
+  padding-left: 2px;
+  color: var(--muted);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.lead-assignee-unassigned {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}

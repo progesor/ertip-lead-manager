@@ -12,6 +12,8 @@ pub mod lead_workspace_service;
 pub mod pipeline_service;
 
 #[cfg(test)]
+mod analytics_performance_tests;
+#[cfg(test)]
 mod lead_product_override_integration_tests;
 #[cfg(test)]
 mod lead_workspace_performance_tests;

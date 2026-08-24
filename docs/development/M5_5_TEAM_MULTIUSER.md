@@ -97,11 +97,11 @@ M5 is merged. M5.5 is based directly on `main` and validated through the reposit
 - [x] current inactive assignee remains readable but cannot receive new assignments;
 - [x] activity response can expose future actor identity without breaking local NULL actor mode;
 - [x] Light/Dark UI is readable;
-- [x] final latest-head Windows Rust + frontend + NSIS gate passes.
+- [x] final Windows Rust + frontend + NSIS gate passes.
 
 ## Final validation
 
-GitHub Actions CI run `32715699721` / run #526 passed all three gates after the Lead List ownership update:
+User smoke testing accepted the personnel assignment, Kanban ownership, filtering and audit workflow. The final Lead List ownership addition was validated by GitHub Actions CI run `32715699721` / run #526:
 
 - Frontend checks: PASS
 - Rust tests (Windows): PASS

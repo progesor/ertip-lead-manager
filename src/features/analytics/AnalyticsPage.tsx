@@ -180,7 +180,8 @@ export function AnalyticsPage() {
       </div>
 
       <article className="panel analytics-filter-panel">
-        <div className="analytics-presets" role="group" aria-label="Tarih aralığı hızlı seçimleri">
+        <fieldset className="analytics-presets">
+          <legend>Tarih aralığı hızlı seçimleri</legend>
           {(["7d", "30d", "90d", "all"] as const).map((value) => (
             <button
               type="button"
@@ -192,7 +193,7 @@ export function AnalyticsPage() {
               {value === "7d" ? "7 Gün" : value === "30d" ? "30 Gün" : value === "90d" ? "90 Gün" : "Tümü"}
             </button>
           ))}
-        </div>
+        </fieldset>
         <div className="analytics-custom-range">
           <label>
             <span>Başlangıç</span>
@@ -274,37 +275,16 @@ export function AnalyticsPage() {
       </div>
 
       <div className="analytics-breakdown-grid">
-        <BreakdownCard
-          title="Ülke"
-          hint="Normalize contact ülkesine göre"
-          rows={report?.countryBreakdown ?? []}
-          labelFor={countryLabel}
-        />
-        <BreakdownCard
-          title="Platform"
-          hint="Submission kaynak platformuna göre"
-          rows={report?.platformBreakdown ?? []}
-          labelFor={platformLabel}
-        />
-        <BreakdownCard
-          title="Ürün İlgisi"
-          hint="Kaynak normalize submission ilgileri · multi-select üyelik"
-          rows={report?.productBreakdown ?? []}
-          labelFor={(key) => productLabels[key] ?? key}
-        />
+        <BreakdownCard title="Ülke" hint="Normalize contact ülkesine göre" rows={report?.countryBreakdown ?? []} labelFor={countryLabel} />
+        <BreakdownCard title="Platform" hint="Submission kaynak platformuna göre" rows={report?.platformBreakdown ?? []} labelFor={platformLabel} />
+        <BreakdownCard title="Ürün İlgisi" hint="Kaynak normalize submission ilgileri · multi-select üyelik" rows={report?.productBreakdown ?? []} labelFor={(key) => productLabels[key] ?? key} />
       </div>
     </section>
   );
 }
 
 function MetricCard({ label, value, hint }: { label: string; value: string; hint: string }) {
-  return (
-    <article className="kpi-card analytics-kpi-card">
-      <div className="kpi-label">{label}</div>
-      <div className="kpi-value">{value}</div>
-      <div className="kpi-hint">{hint}</div>
-    </article>
-  );
+  return <article className="kpi-card analytics-kpi-card"><div className="kpi-label">{label}</div><div className="kpi-value">{value}</div><div className="kpi-hint">{hint}</div></article>;
 }
 
 function TrendBars({ points }: { points: AnalyticsTrendPoint[] }) {
@@ -316,11 +296,7 @@ function TrendBars({ points }: { points: AnalyticsTrendPoint[] }) {
         {points.map((point, index) => {
           const showLabel = points.length <= 18 || index === 0 || index === points.length - 1 || index % Math.ceil(points.length / 10) === 0;
           return (
-            <div
-              className="analytics-trend-day"
-              key={point.day}
-              title={`${formatDay(point.day)} · ${point.submissions} submission · ${point.uniqueContacts} kişi · ${point.repeatSubmissions} repeat`}
-            >
+            <div className="analytics-trend-day" key={point.day} title={`${formatDay(point.day)} · ${point.submissions} submission · ${point.uniqueContacts} kişi · ${point.repeatSubmissions} repeat`}>
               <div className="analytics-trend-value">{point.submissions}</div>
               <div className="analytics-trend-columns">
                 <span className="is-submission" style={{ height: `${Math.max(4, (point.submissions / max) * 100)}%` }} />
@@ -340,57 +316,31 @@ function StatusFunnel({ points, denominator }: { points: AnalyticsStatusPoint[];
     <div className="analytics-funnel-list">
       {points.map((point) => (
         <div className="analytics-funnel-row" key={point.status}>
-          <div className="analytics-funnel-label">
-            <strong>{statusLabels[point.status]}</strong>
-            <span>{formatNumber(point.contacts)} · {formatPercent(point.contacts, denominator)}</span>
-          </div>
-          <div className="analytics-funnel-track">
-            <span
-              className={`analytics-funnel-fill status-${point.status.toLowerCase()}`}
-              style={{ width: `${denominator > 0 ? Math.max(0, (point.contacts / denominator) * 100) : 0}%` }}
-            />
-          </div>
+          <div className="analytics-funnel-label"><strong>{statusLabels[point.status]}</strong><span>{formatNumber(point.contacts)} · {formatPercent(point.contacts, denominator)}</span></div>
+          <div className="analytics-funnel-track"><span className={`analytics-funnel-fill status-${point.status.toLowerCase()}`} style={{ width: `${denominator > 0 ? Math.max(0, (point.contacts / denominator) * 100) : 0}%` }} /></div>
         </div>
       ))}
     </div>
   );
 }
 
-function BreakdownCard({
-  title,
-  hint,
-  rows,
-  labelFor,
-}: {
-  title: string;
-  hint: string;
-  rows: AnalyticsBreakdownPoint[];
-  labelFor: (key: string) => string;
-}) {
+function BreakdownCard({ title, hint, rows, labelFor }: { title: string; hint: string; rows: AnalyticsBreakdownPoint[]; labelFor: (key: string) => string }) {
   const visible = rows.slice(0, 10);
   const max = Math.max(...visible.map((row) => row.submissions), 1);
   return (
     <article className="panel analytics-breakdown-card">
-      <div className="panel-heading">
-        <div><h2>{title}</h2><p>{hint}</p></div>
-        <span className="placeholder-pill">{rows.length} kategori</span>
-      </div>
+      <div className="panel-heading"><div><h2>{title}</h2><p>{hint}</p></div><span className="placeholder-pill">{rows.length} kategori</span></div>
       {visible.length > 0 ? (
         <div className="analytics-breakdown-list">
           {visible.map((row) => (
             <div className="analytics-breakdown-row" key={row.key}>
-              <div className="analytics-breakdown-copy">
-                <strong title={labelFor(row.key)}>{labelFor(row.key)}</strong>
-                <span>{formatNumber(row.submissions)} submission · {formatNumber(row.uniqueContacts)} kişi</span>
-              </div>
+              <div className="analytics-breakdown-copy"><strong title={labelFor(row.key)}>{labelFor(row.key)}</strong><span>{formatNumber(row.submissions)} submission · {formatNumber(row.uniqueContacts)} kişi</span></div>
               <div className="analytics-breakdown-track"><span style={{ width: `${(row.submissions / max) * 100}%` }} /></div>
             </div>
           ))}
           {rows.length > visible.length ? <div className="analytics-more">İlk {visible.length} kategori gösteriliyor.</div> : null}
         </div>
-      ) : (
-        <div className="analytics-empty">Bu kırılım için veri yok.</div>
-      )}
+      ) : <div className="analytics-empty">Bu kırılım için veri yok.</div>}
     </article>
   );
 }

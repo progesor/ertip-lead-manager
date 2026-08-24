@@ -19,6 +19,9 @@ pub struct LeadListFilters {
     pub product_code: Option<String>,
     pub repeat_only: bool,
     pub warning_only: bool,
+    pub follow_up_due_from: Option<String>,
+    pub follow_up_due_to: Option<String>,
+    pub follow_up_due_before: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -254,6 +257,39 @@ fn append_filters(builder: &mut QueryBuilder<'_, Sqlite>, filters: &LeadListFilt
             " AND EXISTS (SELECT 1 FROM lead_data_quality_issues warning_issue WHERE warning_issue.lead_contact_id = c.id AND warning_issue.status = 'OPEN')",
         );
     }
+
+    if let Some(before) = filters
+        .follow_up_due_before
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        builder.push(
+            " AND EXISTS (SELECT 1 FROM follow_ups follow_up_filter WHERE follow_up_filter.lead_contact_id = c.id AND follow_up_filter.status = 'OPEN' AND follow_up_filter.due_at < ",
+        );
+        builder.push_bind(before.to_string()).push(")");
+    } else if filters.follow_up_due_from.is_some() || filters.follow_up_due_to.is_some() {
+        builder.push(
+            " AND EXISTS (SELECT 1 FROM follow_ups follow_up_filter WHERE follow_up_filter.lead_contact_id = c.id AND follow_up_filter.status = 'OPEN'",
+        );
+        if let Some(from) = filters
+            .follow_up_due_from
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            builder.push(" AND follow_up_filter.due_at >= ").push_bind(from.to_string());
+        }
+        if let Some(to) = filters
+            .follow_up_due_to
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            builder.push(" AND follow_up_filter.due_at < ").push_bind(to.to_string());
+        }
+        builder.push(")");
+    }
 }
 
 fn append_effective_product_filter(builder: &mut QueryBuilder<'_, Sqlite>, product_code: &str) {
@@ -435,5 +471,44 @@ mod tests {
         };
         let (_, added_total) = repository.list(&added_query).await.expect("filter added product");
         assert_eq!(added_total, 2);
+    }
+
+    #[tokio::test]
+    async fn follow_up_window_filters_open_follow_ups_without_counting_closed_ones() {
+        let database = Database::connect_memory().await.expect("open database");
+        seed_workspace(&database).await;
+
+        sqlx::query("INSERT INTO follow_ups (id, lead_contact_id, due_at, status, created_at) VALUES ('fu-overdue', 'contact-a', '2026-08-24T06:00:00.000Z', 'OPEN', '2026-08-23T00:00:00.000Z'), ('fu-today', 'contact-b', '2026-08-24T10:00:00.000Z', 'OPEN', '2026-08-23T00:00:00.000Z'), ('fu-closed', 'contact-b', '2026-08-24T05:00:00.000Z', 'COMPLETED', '2026-08-23T00:00:00.000Z')")
+            .execute(database.pool())
+            .await
+            .expect("seed follow-ups");
+
+        let repository = LeadWorkspaceRepository::new(database.pool().clone());
+        let overdue_query = LeadListQuery {
+            filters: LeadListFilters {
+                follow_up_due_before: Some("2026-08-24T07:00:00.000Z".to_string()),
+                ..LeadListFilters::default()
+            },
+            sort: LeadListSort::LatestDesc,
+            limit: 50,
+            offset: 0,
+        };
+        let (overdue_rows, overdue_total) = repository.list(&overdue_query).await.expect("filter overdue");
+        assert_eq!(overdue_total, 1);
+        assert_eq!(overdue_rows[0].id, "contact-a");
+
+        let today_query = LeadListQuery {
+            filters: LeadListFilters {
+                follow_up_due_from: Some("2026-08-24T07:00:00.000Z".to_string()),
+                follow_up_due_to: Some("2026-08-24T21:00:00.000Z".to_string()),
+                ..LeadListFilters::default()
+            },
+            sort: LeadListSort::LatestDesc,
+            limit: 50,
+            offset: 0,
+        };
+        let (today_rows, today_total) = repository.list(&today_query).await.expect("filter today");
+        assert_eq!(today_total, 1);
+        assert_eq!(today_rows[0].id, "contact-b");
     }
 }

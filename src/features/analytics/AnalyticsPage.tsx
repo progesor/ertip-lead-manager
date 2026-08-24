@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CommandError, LeadStatus } from "../leads/types";
 import "./analytics.css";
+import { MarketingDimensionsPanel } from "./MarketingDimensionsPanel";
 import type {
   AnalyticsBreakdownPoint,
   AnalyticsResponse,
@@ -279,6 +280,13 @@ export function AnalyticsPage() {
         <BreakdownCard title="Platform" hint="Submission kaynak platformuna göre" rows={report?.platformBreakdown ?? []} labelFor={platformLabel} />
         <BreakdownCard title="Ürün İlgisi" hint="Kaynak normalize submission ilgileri · multi-select üyelik" rows={report?.productBreakdown ?? []} labelFor={(key) => productLabels[key] ?? key} />
       </div>
+
+      <MarketingDimensionsPanel
+        campaigns={report?.campaignBreakdown ?? []}
+        forms={report?.formBreakdown ?? []}
+        adsets={report?.adsetBreakdown ?? []}
+        ads={report?.adBreakdown ?? []}
+      />
     </section>
   );
 }

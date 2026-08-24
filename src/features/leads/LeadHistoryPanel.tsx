@@ -246,8 +246,8 @@ export function LeadHistoryPanel({ detail }: { detail: LeadDetailResponse }) {
               <span>Manuel override</span>
               {detail.contact.productOverrides.length > 0 ? (
                 <div className="lead-history-override-list">
-                  {detail.contact.productOverrides.map((override, index) => (
-                    <div key={`${override.productCode}-${override.createdAt}-${index}`}>
+                  {detail.contact.productOverrides.map((override) => (
+                    <div key={`${override.productCode}-${override.createdAt}-${override.action}`}>
                       <strong>{productLabels[override.productCode] ?? override.productCode}</strong>
                       <span>{override.action === "ADD" ? "Eklendi" : "Kaldırıldı"} · {formatDate(override.createdAt)}</span>
                     </div>

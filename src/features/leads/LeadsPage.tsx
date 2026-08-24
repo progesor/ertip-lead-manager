@@ -172,7 +172,7 @@ export function LeadsPage() {
       .then(setFilterOptions)
       .catch((loadError) => setError((current) => current ?? commandErrorMessage(loadError)));
 
-    void invoke<StaffMember[]>("list_staff", { includeInactive: true })
+    void invoke<StaffMember[]>("list_staff_members", { includeInactive: true })
       .then(setStaffMembers)
       .catch((loadError) => setError((current) => current ?? commandErrorMessage(loadError)));
   }, []);

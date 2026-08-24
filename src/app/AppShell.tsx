@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 
 const navigation = [
@@ -9,7 +10,26 @@ const navigation = [
   { to: "/settings", label: "Ayarlar", short: "AY" },
 ];
 
+type ThemeMode = "light" | "dark";
+const THEME_STORAGE_KEY = "ertip-lead-manager-theme";
+
+function initialTheme(): ThemeMode {
+  const saved = window.localStorage.getItem(THEME_STORAGE_KEY);
+  if (saved === "light" || saved === "dark") return saved;
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
 export function AppShell() {
+  const [theme, setTheme] = useState<ThemeMode>(initialTheme);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
+
+  const nextTheme = theme === "dark" ? "light" : "dark";
+
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -49,7 +69,19 @@ export function AppShell() {
             <div className="eyebrow">ERTIP MEDICAL</div>
             <div className="topbar-title">Lead Yönetimi</div>
           </div>
-          <div className="local-badge">Çevrimdışı hazır</div>
+          <div className="topbar-actions">
+            <button
+              type="button"
+              className="theme-toggle"
+              onClick={() => setTheme(nextTheme)}
+              aria-label={`${nextTheme === "dark" ? "Koyu" : "Açık"} temaya geç`}
+              title={`${nextTheme === "dark" ? "Koyu" : "Açık"} temaya geç`}
+            >
+              <span aria-hidden="true">{theme === "dark" ? "☀" : "☾"}</span>
+              <span>{theme === "dark" ? "Açık" : "Koyu"}</span>
+            </button>
+            <div className="local-badge">Çevrimdışı hazır</div>
+          </div>
         </header>
         <div className="page-scroll">
           <Outlet />

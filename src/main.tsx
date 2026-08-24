@@ -7,6 +7,7 @@ import "./features/leads/product-overrides.css";
 import "./features/pipeline/pipeline-follow-up.css";
 import "./styles.css";
 import "./theme.css";
+import "./readability-patch.css";
 
 const storedTheme = window.localStorage.getItem("ertip-lead-manager-theme");
 const initialTheme =

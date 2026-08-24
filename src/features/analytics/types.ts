@@ -34,6 +34,13 @@ export interface AnalyticsBreakdownPoint {
   uniqueContacts: number;
 }
 
+export interface AnalyticsNamedBreakdownPoint {
+  key: string;
+  name: string;
+  submissions: number;
+  uniqueContacts: number;
+}
+
 export interface AnalyticsResponse {
   range: AnalyticsRange;
   summary: AnalyticsSummary;
@@ -42,4 +49,8 @@ export interface AnalyticsResponse {
   countryBreakdown: AnalyticsBreakdownPoint[];
   platformBreakdown: AnalyticsBreakdownPoint[];
   productBreakdown: AnalyticsBreakdownPoint[];
+  campaignBreakdown: AnalyticsNamedBreakdownPoint[];
+  formBreakdown: AnalyticsNamedBreakdownPoint[];
+  adsetBreakdown: AnalyticsNamedBreakdownPoint[];
+  adBreakdown: AnalyticsNamedBreakdownPoint[];
 }

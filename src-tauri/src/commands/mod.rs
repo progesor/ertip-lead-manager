@@ -1,3 +1,4 @@
+pub mod analytics;
 pub mod dashboard;
 pub mod diagnostics;
 pub mod follow_ups;

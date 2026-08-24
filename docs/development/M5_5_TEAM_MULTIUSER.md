@@ -12,6 +12,7 @@ Add personnel ownership to the current local CRM without creating a dead-end sch
 - one current assignee per lead contact;
 - Lead Detail assignment control;
 - Kanban assignee display and assignee / unassigned filters;
+- Lead List current-assignee display and assignee / unassigned filters;
 - assignment changes recorded as immutable `ASSIGNEE_CHANGED` activity events;
 - nullable `lead_activities.actor_user_id` groundwork for authenticated audit attribution.
 
@@ -80,26 +81,20 @@ Before an internal multi-user release:
 
 ## Validation strategy
 
-M5 Analytics has been merged to `main`. The M5.5 branch has been rewritten onto that squash-merged `main`, so PR #12 now contains only team-assignment and multi-user-readiness changes.
-
-CI run #504 already validated the same application tree before the history cleanup:
-
-- Frontend lint/test/build: PASS
-- Windows Rust tests including schema v4 migration: PASS
-- Windows NSIS package: PASS
-
-A final clean-head CI run is required after the branch rewrite. The remaining product gate is the real local assignment/personnel UX smoke test.
+M5 is merged. M5.5 is based directly on `main` and validated through the repository pull-request workflow. CI covers frontend lint/tests/build, Windows Rust tests/migrations and a debug NSIS package.
 
 ## Acceptance criteria — local M5.5
 
-- [ ] staff can be created and edited from Settings;
-- [ ] staff can be deactivated/reactivated without deleting history;
-- [ ] lead can be assigned/unassigned from Lead Detail;
-- [ ] assignment changes create immutable activity records;
-- [ ] Kanban cards show current assignee;
-- [ ] Kanban filters by active/inactive assignee and Unassigned;
-- [ ] Pipeline filter state survives Lead Detail round-trip;
-- [ ] current inactive assignee remains readable but cannot receive new assignments;
+- [x] staff can be created and edited from Settings;
+- [x] staff can be deactivated/reactivated without deleting history;
+- [x] lead can be assigned/unassigned from Lead Detail;
+- [x] assignment changes create immutable activity records;
+- [x] Kanban cards show current assignee;
+- [x] Kanban filters by active/inactive assignee and Unassigned;
+- [x] Lead List shows current assignee;
+- [x] Lead List filters by active/inactive assignee and Unassigned;
+- [x] Pipeline filter state survives Lead Detail round-trip;
+- [x] current inactive assignee remains readable but cannot receive new assignments;
 - [x] activity response can expose future actor identity without breaking local NULL actor mode;
-- [ ] Light/Dark UI is readable;
-- [x] Windows Rust + frontend + NSIS gate passes on the pre-rebase equivalent application tree.
+- [x] Light/Dark UI is readable;
+- [ ] final latest-head Windows Rust + frontend + NSIS gate passes.

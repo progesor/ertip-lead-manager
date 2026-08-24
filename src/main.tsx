@@ -8,6 +8,7 @@ import "./features/pipeline/pipeline-follow-up.css";
 import "./styles.css";
 import "./theme.css";
 import "./readability-patch.css";
+import "./dark-mode-polish.css";
 
 const storedTheme = window.localStorage.getItem("ertip-lead-manager-theme");
 const initialTheme =

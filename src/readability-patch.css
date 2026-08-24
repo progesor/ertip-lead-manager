@@ -1,0 +1,114 @@
+.lead-product-option {
+  min-height: 42px;
+  padding: 7px 9px;
+}
+
+.lead-product-option-label {
+  font-size: 12px;
+}
+
+.lead-product-source {
+  font-size: 9px;
+}
+
+.lead-note-footer > span,
+.lead-activity-detail {
+  font-size: 10px;
+}
+
+.lead-note-footer button {
+  font-size: 10px;
+}
+
+.lead-detail-id {
+  font-size: 10px;
+}
+
+.lead-detail-metrics strong {
+  font-size: 15px;
+}
+
+.diagnostics-grid dt,
+.import-row-number,
+.leads-country-menu button strong {
+  font-size: 11px;
+}
+
+.diagnostics-grid dd,
+.import-source-meta,
+.import-start-panel p {
+  font-size: 13px;
+}
+
+.notice,
+.empty-list {
+  font-size: 13px;
+}
+
+html[data-theme="dark"] .lead-product-option {
+  border-color: #354354;
+  background: #1b2632;
+}
+
+html[data-theme="dark"] .lead-product-option:hover {
+  border-color: #50647b;
+  background: #202d3a;
+}
+
+html[data-theme="dark"] .lead-product-option.is-included {
+  border-color: #496885;
+  background: #1c3042;
+}
+
+html[data-theme="dark"] .lead-product-option-label {
+  color: #dbe4ed;
+}
+
+html[data-theme="dark"] .lead-product-source {
+  background: #26323f;
+  color: #a8b4c1;
+}
+
+html[data-theme="dark"] .lead-product-source-source {
+  background: #243647;
+  color: #a8bfd4;
+}
+
+html[data-theme="dark"] .lead-product-source-added {
+  background: #1f392e;
+  color: #9dd1b5;
+}
+
+html[data-theme="dark"] .lead-product-source-removed {
+  background: #40282b;
+  color: #e1a7a7;
+}
+
+html[data-theme="dark"] .lead-note-footer {
+  border-color: #2f3b49;
+}
+
+html[data-theme="dark"] .lead-note-footer button {
+  border-color: #3a495a;
+  background: #1a2531;
+  color: #c7d1dc;
+}
+
+html[data-theme="dark"] .lead-note-footer button.is-primary {
+  border-color: #4b6c8c;
+  background: #20384e;
+  color: #b7d2ec;
+}
+
+html[data-theme="dark"] .lead-note-footer button.is-danger {
+  border-color: #704747;
+  color: #e3a5a5;
+}
+
+html[data-theme="dark"] .diagnostics-grid dd,
+html[data-theme="dark"] .diagnostics-grid dt,
+html[data-theme="dark"] .import-source-meta,
+html[data-theme="dark"] .import-path,
+html[data-theme="dark"] .lead-detail-id {
+  color: #b2bdca;
+}

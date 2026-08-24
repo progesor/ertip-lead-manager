@@ -180,7 +180,7 @@ export function AnalyticsPage() {
       </div>
 
       <article className="panel analytics-filter-panel">
-        <div className="analytics-presets" aria-label="Tarih aralığı hızlı seçimleri">
+        <div className="analytics-presets" role="group" aria-label="Tarih aralığı hızlı seçimleri">
           {(["7d", "30d", "90d", "all"] as const).map((value) => (
             <button
               type="button"

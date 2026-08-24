@@ -36,6 +36,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            commands::dashboard::get_dashboard_attention,
             commands::diagnostics::get_app_diagnostics,
             commands::imports::preview_import,
             commands::imports::commit_import,

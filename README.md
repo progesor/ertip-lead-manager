@@ -2,25 +2,35 @@
 
 Windows-first, local-first lead management and analytics application for Meta lead exports used by Ertip Medical.
 
-> Status: **M4 — Pipeline and Follow-ups in progress** on `feat/m4-pipeline-followups`. M0–M3 are complete; M3 Lead Workspace is merged to `main`.
+> Status: **M4 — Pipeline and Follow-ups in final validation** on `feat/m4-pipeline-followups`. M0–M3 are complete and merged to `main`.
 
 ## Product summary
 
-Ertip Lead Manager imports manually downloaded `.xlsx` and `.csv` lead files, preserves immutable source data, detects duplicate/repeat submissions, supports legacy free-text and structured multi-select product interests, and provides a Windows desktop workspace for reviewing and managing leads.
+Ertip Lead Manager imports manually downloaded `.xlsx` and `.csv` lead files, preserves immutable source data, detects duplicate/repeat submissions, supports legacy free-text and structured multi-select product interests, and provides a Windows desktop workspace for daily lead and sales operations.
 
-Completed workspace capabilities include:
+The application is intentionally organized around this daily-use hierarchy:
 
-- real SQLite-backed lead list with search/filter/sort/pagination;
+1. **Genel Bakış / Dashboard** — KPI and attention-first work queue.
+2. **Pipeline / Kanban** — primary lifecycle/status workspace.
+3. **Lead Detail** — per-contact operational workspace.
+4. **Leadler** — secondary broad search and audit list.
+
+Current capabilities include:
+
+- real SQLite-backed Dashboard KPIs and attention queues;
+- pointer-based full-card Kanban drag/drop with floating preview and audited status changes;
+- Kanban search/country/product/repeat/warning plus due-today/overdue quick filters;
+- follow-up create/reschedule/complete/cancel with canonical UTC persistence;
+- context-aware navigation between Dashboard/Kanban and Lead Detail;
+- production Lead Detail layout with a 2/3 operational workspace and 1/3 sticky tabbed history/source panel;
+- CRM lifecycle status changes and immutable activity audit;
+- editable CRM notes;
+- manual contact-level product-interest corrections stored separately from imported source data;
+- full immutable submission/source history when needed without dominating the daily workflow;
+- real SQLite-backed Lead list with search/filter/sort/pagination;
 - dynamic country filtering with Turkish country names;
 - platform, repeat and data-quality indicators;
-- lead detail with every linked submission and immutable raw source fields;
-- CRM lifecycle status changes;
-- editable CRM notes with audit events;
-- manual contact-level product-interest corrections stored separately from imported source data;
-- activity history;
 - 10k-contact / 25k-submission workspace smoke coverage.
-
-M4 is adding the actionable sales workflow: lifecycle pipeline/kanban, follow-ups and dashboard attention queues.
 
 V1 deliberately does **not** connect to Google Sheets, Meta APIs, WhatsApp APIs, cloud databases, or multi-user authentication. Core workflows remain usable offline.
 

@@ -1,5 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type {
   CommandError,
@@ -84,7 +92,7 @@ function formatDate(value: string | null) {
 }
 
 function formatCountry(code: string | null) {
-  if (!code) return "—";
+  if (!code) return "Ülke yok";
   const normalized = code.trim().toUpperCase();
   try {
     const name = regionNames.of(normalized);
@@ -223,13 +231,17 @@ function PipelineCardBody({ card }: { card: PipelineCard }) {
       </div>
 
       <div className="pipeline-card-contact">
-        {card.primaryEmail ?? card.primaryPhone ?? "İletişim bilgisi yok"}
+        {card.primaryPhone ?? "Telefon bilgisi yok"}
       </div>
 
       <div className="pipeline-card-meta">
         <span>{formatCountry(card.countryCode)}</span>
         <span>{formatDate(card.latestSubmissionAt)}</span>
       </div>
+
+      {card.primaryEmail ? (
+        <div className="pipeline-card-email">{card.primaryEmail}</div>
+      ) : null}
 
       <div className="pipeline-card-chips">
         {card.productInterests.slice(0, 2).map((code) => (
@@ -370,7 +382,7 @@ export function PipelinePage() {
   }
 
   function beginCardPointerDrag(
-    event: React.PointerEvent<HTMLButtonElement>,
+    event: ReactPointerEvent<HTMLButtonElement>,
     card: PipelineCard,
   ) {
     if (event.button !== 0 || mutatingId !== null) return;
@@ -391,7 +403,7 @@ export function PipelinePage() {
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
-  function moveCardPointer(event: React.PointerEvent<HTMLButtonElement>) {
+  function moveCardPointer(event: ReactPointerEvent<HTMLButtonElement>) {
     const drag = pointerDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
 
@@ -417,7 +429,7 @@ export function PipelinePage() {
     );
   }
 
-  function endCardPointer(event: React.PointerEvent<HTMLButtonElement>) {
+  function endCardPointer(event: ReactPointerEvent<HTMLButtonElement>) {
     const drag = pointerDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
 
@@ -445,7 +457,7 @@ export function PipelinePage() {
     }, 0);
   }
 
-  function cancelCardPointer(event: React.PointerEvent<HTMLButtonElement>) {
+  function cancelCardPointer(event: ReactPointerEvent<HTMLButtonElement>) {
     const drag = pointerDragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
     pointerDragRef.current = null;
@@ -458,7 +470,7 @@ export function PipelinePage() {
     }, 0);
   }
 
-  function openLead(event: React.MouseEvent<HTMLButtonElement>, contactId: string) {
+  function openLead(event: ReactMouseEvent<HTMLButtonElement>, contactId: string) {
     if (suppressClickRef.current) {
       event.preventDefault();
       suppressClickRef.current = false;
@@ -521,7 +533,7 @@ export function PipelinePage() {
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Ad, e-posta, telefon veya Meta Lead ID"
+            placeholder="Ad, telefon, e-posta veya Meta Lead ID"
           />
         </label>
 

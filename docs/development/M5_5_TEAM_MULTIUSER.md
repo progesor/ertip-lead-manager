@@ -80,7 +80,15 @@ Before an internal multi-user release:
 
 ## Validation strategy
 
-The M5.5 branch is normally stacked on M5 Analytics. For CI visibility it may be temporarily retargeted to `main` only long enough to trigger the repository's `pull_request` workflow, then returned to the Analytics base. This does not change merge order or product scope.
+M5 Analytics has been merged to `main`. The M5.5 branch has been rewritten onto that squash-merged `main`, so PR #12 now contains only team-assignment and multi-user-readiness changes.
+
+CI run #504 already validated the same application tree before the history cleanup:
+
+- Frontend lint/test/build: PASS
+- Windows Rust tests including schema v4 migration: PASS
+- Windows NSIS package: PASS
+
+A final clean-head CI run is required after the branch rewrite. The remaining product gate is the real local assignment/personnel UX smoke test.
 
 ## Acceptance criteria — local M5.5
 
@@ -92,6 +100,6 @@ The M5.5 branch is normally stacked on M5 Analytics. For CI visibility it may be
 - [ ] Kanban filters by active/inactive assignee and Unassigned;
 - [ ] Pipeline filter state survives Lead Detail round-trip;
 - [ ] current inactive assignee remains readable but cannot receive new assignments;
-- [ ] activity response can expose future actor identity without breaking local NULL actor mode;
+- [x] activity response can expose future actor identity without breaking local NULL actor mode;
 - [ ] Light/Dark UI is readable;
-- [ ] Windows Rust + frontend + NSIS gate passes.
+- [x] Windows Rust + frontend + NSIS gate passes on the pre-rebase equivalent application tree.

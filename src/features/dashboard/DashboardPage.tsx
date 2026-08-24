@@ -16,6 +16,7 @@ interface DashboardAttentionLead {
   id: string;
   displayName: string;
   status: LeadStatus;
+  primaryPhone: string | null;
   countryCode: string | null;
   latestSubmissionAt: string | null;
   dueAt: string | null;
@@ -103,7 +104,7 @@ function formatDate(value: string | null) {
 }
 
 function formatCountry(code: string | null) {
-  if (!code) return "—";
+  if (!code) return "Ülke yok";
   const normalized = code.trim().toUpperCase();
   try {
     const name = regionNames.of(normalized);
@@ -261,6 +262,9 @@ export function DashboardPage() {
                     >
                       <div className="dashboard-attention-item-main">
                         <strong>{item.displayName}</strong>
+                        <span className="dashboard-attention-phone">
+                          {item.primaryPhone ?? "Telefon bilgisi yok"}
+                        </span>
                         <span>{formatCountry(item.countryCode)}</span>
                       </div>
                       <div className="dashboard-attention-item-meta">

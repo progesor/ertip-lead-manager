@@ -1,0 +1,269 @@
+/* Final dark-theme contrast and surface audit. Kept as a last-loaded layer so
+   component-level light-theme colors cannot leak into dark mode. */
+
+html[data-theme="dark"] .dashboard-attention-card-heading h3,
+html[data-theme="dark"] .pipeline-column-heading strong,
+html[data-theme="dark"] .pipeline-total strong,
+html[data-theme="dark"] .lead-name-button,
+html[data-theme="dark"] .lead-detail-products .panel-heading h2,
+html[data-theme="dark"] .lead-detail-warnings .panel-heading h2,
+html[data-theme="dark"] .lead-detail-notes-panel .panel-heading h2,
+html[data-theme="dark"] .follow-up-panel .panel-heading h2,
+html[data-theme="dark"] .lead-history-submission > summary strong,
+html[data-theme="dark"] .lead-history-activity strong,
+html[data-theme="dark"] .lead-history-source-line strong,
+html[data-theme="dark"] .lead-history-override-list strong,
+html[data-theme="dark"] .follow-up-card-head strong,
+html[data-theme="dark"] .lead-note-card > p,
+html[data-theme="dark"] .import-lead-name {
+  color: #edf3f9;
+}
+
+html[data-theme="dark"] .dashboard-attention-card-heading p,
+html[data-theme="dark"] .dashboard-attention-heading p,
+html[data-theme="dark"] .kpi-label,
+html[data-theme="dark"] .kpi-hint,
+html[data-theme="dark"] .pipeline-toolbar > label,
+html[data-theme="dark"] .pipeline-total span,
+html[data-theme="dark"] .leads-search-row label,
+html[data-theme="dark"] .leads-field-label,
+html[data-theme="dark"] .lead-detail-products .panel-heading p,
+html[data-theme="dark"] .lead-detail-warnings .panel-heading p,
+html[data-theme="dark"] .lead-detail-notes-panel .panel-heading p,
+html[data-theme="dark"] .follow-up-panel .panel-heading p,
+html[data-theme="dark"] .lead-history-header > div > span,
+html[data-theme="dark"] .lead-history-count,
+html[data-theme="dark"] .lead-history-activity em,
+html[data-theme="dark"] .lead-history-activity span,
+html[data-theme="dark"] .lead-history-submission > summary span,
+html[data-theme="dark"] .lead-history-source-line > span,
+html[data-theme="dark"] .lead-history-source-line small,
+html[data-theme="dark"] .lead-history-source-section > span,
+html[data-theme="dark"] .lead-history-source-section > small,
+html[data-theme="dark"] .lead-history-override-list span,
+html[data-theme="dark"] .lead-history-products > small,
+html[data-theme="dark"] .lead-history-raw summary,
+html[data-theme="dark"] .follow-up-section-heading span,
+html[data-theme="dark"] .follow-up-card > p,
+html[data-theme="dark"] .follow-up-no-note,
+html[data-theme="dark"] .import-lead-contact,
+html[data-theme="dark"] .import-row-number {
+  color: #aebbc9;
+}
+
+html[data-theme="dark"] .lead-name-button:hover {
+  color: #9fc6f4;
+}
+
+html[data-theme="dark"] .leads-table td,
+html[data-theme="dark"] .import-table td {
+  border-color: #2d3946;
+  color: #d7e1eb;
+}
+
+html[data-theme="dark"] .leads-table tbody tr,
+html[data-theme="dark"] .import-table tbody tr {
+  background: #18212c;
+}
+
+html[data-theme="dark"] .dashboard-attention-card-heading,
+html[data-theme="dark"] .dashboard-attention-more,
+html[data-theme="dark"] .pipeline-column-heading,
+html[data-theme="dark"] .leads-table th,
+html[data-theme="dark"] .import-table th {
+  border-color: #344253;
+  background: #1c2733;
+}
+
+html[data-theme="dark"] .dashboard-attention-item {
+  border-color: #2f3b49;
+  background: #18212c;
+}
+
+html[data-theme="dark"] .dashboard-attention-item-main strong {
+  color: #eef3f8;
+}
+
+html[data-theme="dark"] .dashboard-attention-item-main span,
+html[data-theme="dark"] .dashboard-attention-item-meta {
+  color: #aeb9c6;
+}
+
+html[data-theme="dark"] .dashboard-attention-item-meta em {
+  color: #c5d0dc;
+}
+
+html[data-theme="dark"] .lead-detail-hero-production .lead-detail-contact-lines > span,
+html[data-theme="dark"] .lead-detail-metrics > div {
+  border-color: #354354;
+  background: #1b2632;
+  color: #c6d1dc;
+}
+
+html[data-theme="dark"] .lead-detail-metrics strong {
+  color: #edf3f9;
+}
+
+html[data-theme="dark"] .lead-detail-metrics span {
+  color: #a9b5c2;
+}
+
+html[data-theme="dark"] .lead-detail-products,
+html[data-theme="dark"] .lead-detail-warnings,
+html[data-theme="dark"] .lead-detail-notes-panel,
+html[data-theme="dark"] .lead-detail-primary-column .follow-up-panel,
+html[data-theme="dark"] .lead-detail-hero-production {
+  border-color: #344253;
+  background: #18212c;
+}
+
+html[data-theme="dark"] .lead-detail-products .lead-effective-products,
+html[data-theme="dark"] .lead-product-editor,
+html[data-theme="dark"] .lead-note-footer,
+html[data-theme="dark"] .follow-up-section-heading,
+html[data-theme="dark"] .follow-up-history {
+  border-color: #2f3c4a;
+}
+
+html[data-theme="dark"] .lead-detail-empty-positive {
+  border-color: #355b47;
+  background: #1c3027;
+  color: #a8d1b8;
+}
+
+html[data-theme="dark"] .lead-note-compose,
+html[data-theme="dark"] .follow-up-compose,
+html[data-theme="dark"] .follow-up-edit-grid {
+  border-color: #344253;
+  background: #1b2632;
+}
+
+html[data-theme="dark"] .lead-note-card,
+html[data-theme="dark"] .follow-up-card {
+  border-color: #344253;
+  background: #1a2430;
+}
+
+html[data-theme="dark"] .lead-history-panel {
+  border-color: #344253;
+  background: #151e28;
+}
+
+html[data-theme="dark"] .lead-history-header {
+  border-color: #344253;
+  background: linear-gradient(180deg, #1d2936 0%, #19232e 100%);
+}
+
+html[data-theme="dark"] .lead-history-count {
+  background: #263441;
+  color: #c1ccd7;
+}
+
+html[data-theme="dark"] .lead-history-tabs {
+  border-color: #344253;
+  background: #18232e;
+}
+
+html[data-theme="dark"] .lead-history-tabs button:hover {
+  background: #24313e;
+  color: #e1e9f1;
+}
+
+html[data-theme="dark"] .lead-history-tabs button.is-active {
+  background: #2a3b4d;
+  color: #dcecff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 25%);
+}
+
+html[data-theme="dark"] .lead-history-activity:not(:last-child)::after {
+  background: #344253;
+}
+
+html[data-theme="dark"] .lead-history-dot {
+  border-color: #151e28;
+  background: #78a6cf;
+  box-shadow: 0 0 0 1px #46647f;
+}
+
+html[data-theme="dark"] .lead-history-submission {
+  border-color: #344253;
+  background: #19232e;
+}
+
+html[data-theme="dark"] .lead-history-submission[open] {
+  border-color: #4a5d70;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 20%);
+}
+
+html[data-theme="dark"] .lead-history-submission > summary {
+  background: #19232e;
+}
+
+html[data-theme="dark"] .lead-history-submission > summary > span {
+  background: #263441;
+  color: #b8c6d4;
+}
+
+html[data-theme="dark"] .lead-history-submission-content {
+  border-color: #344253;
+  background: #141d27;
+}
+
+html[data-theme="dark"] .lead-history-products > span {
+  border-color: #405064;
+  background: #202d3a;
+  color: #c5d4e2;
+}
+
+html[data-theme="dark"] .lead-history-source-line,
+html[data-theme="dark"] .lead-history-source-section {
+  border-color: #2f3c49;
+}
+
+html[data-theme="dark"] .lead-history-source-line strong {
+  color: #dbe5ee;
+}
+
+html[data-theme="dark"] .lead-history-override-list > div {
+  border: 1px solid #334252;
+  background: #1b2632;
+}
+
+html[data-theme="dark"] .lead-history-raw pre {
+  border: 1px solid #354354;
+  background: #0d131a;
+  color: #d8e2ec;
+}
+
+html[data-theme="dark"] .lead-status-editor > label,
+html[data-theme="dark"] .follow-up-compose label,
+html[data-theme="dark"] .follow-up-edit-grid label,
+html[data-theme="dark"] .follow-up-section-heading strong {
+  color: #b4bfcc;
+}
+
+html[data-theme="dark"] .follow-up-history-row {
+  border-color: #30404f;
+  color: #d2dce6;
+}
+
+html[data-theme="dark"] .leads-country-menu button strong {
+  color: #e4ebf2;
+}
+
+html[data-theme="dark"] .leads-country-empty,
+html[data-theme="dark"] .leads-result-range,
+html[data-theme="dark"] .leads-pagination {
+  color: #aeb9c6;
+}
+
+html[data-theme="dark"] .import-preview-panel .panel-heading {
+  border-color: #344253;
+}
+
+html[data-theme="dark"] .decision-badge,
+html[data-theme="dark"] .import-chip {
+  border-color: #405064;
+  background: #202d3a;
+  color: #c6d2de;
+}

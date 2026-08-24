@@ -6,10 +6,9 @@ Turn stored leads into a production-ready daily sales workflow centered on **Das
 
 ## Implementation status
 
-**Branch:** `feat/m4-pipeline-followups`  
 **Issue:** #7  
 **Pull request:** #8  
-**Status:** IN PROGRESS
+**Status:** **PASS — COMPLETE**
 
 ## Daily-use hierarchy
 
@@ -18,7 +17,7 @@ Turn stored leads into a production-ready daily sales workflow centered on **Das
 3. **Lead Detail** — notes, follow-ups, product correction and customer context.
 4. **Leadler** — secondary query/list screen for broad search and auditing.
 
-## Implemented
+## Delivered
 
 ### Pipeline / Kanban
 
@@ -26,27 +25,25 @@ Turn stored leads into a production-ready daily sales workflow centered on **Das
 - NEW / CONTACTED / REPLIED / QUALIFIED / QUOTE_SENT active columns;
 - optional WON / LOST / INVALID terminal columns;
 - effective product interests, platform, repeat, quality-warning and follow-up context on cards;
+- phone and country promoted as primary customer context, with e-mail secondary;
 - search, country, product, repeat and warning filters;
-- **Gecikmiş** and **Bugün Takip** quick filters are calculated in SQLite, not client-side;
-- full-card pointer-based drag interaction tuned for Tauri/WebView2;
+- **Gecikmiş** and **Bugün Takip** quick filters calculated in SQLite with real totals;
+- full-card pointer interaction tuned for Tauri/WebView2;
 - floating mouse-attached drag preview, source placeholder fade and target-column highlight;
 - normal click opens Lead Detail; drag threshold prevents accidental navigation;
-- status dropdown removed from cards: Kanban itself is the primary status control;
-- Kanban and Lead Detail both call the same M3 `change_lead_status` backend command;
-- failed status mutation rolls the optimistic move back;
-- current Kanban filters are preserved when opening a lead and returning;
-- columns retain real counts when display limits apply.
+- Kanban and Lead Detail use the same audited M3 `change_lead_status` backend command;
+- failed status mutations roll optimistic moves back;
+- Kanban filter state survives Lead Detail round-trips.
 
 ### Follow-ups
 
-- existing `follow_ups` schema reused; source/import data remains untouched;
 - create follow-up with date/time and optional note;
 - reschedule, complete and cancel OPEN follow-ups;
-- all mutations are transactional and write immutable activity events;
-- incoming RFC3339 timestamps normalize to canonical UTC milliseconds in Rust;
-- UI edits dates in local time and converts only at the application boundary;
-- overdue / due-today / upcoming labels use the current local display time;
-- completed/cancelled follow-ups remain available in history;
+- all mutations transactional with immutable activity events;
+- RFC3339 timestamps normalize to canonical UTC milliseconds in Rust;
+- UI edits local date/time and converts at the application boundary;
+- overdue / due-today / upcoming semantics;
+- completed/cancelled follow-ups remain in history;
 - Pipeline cards show earliest OPEN follow-up and open-follow-up count.
 
 ### Dashboard / attention workspace
@@ -57,41 +54,57 @@ Turn stored leads into a production-ready daily sales workflow centered on **Das
 - NEW / uncontacted leads;
 - recent repeat submissions;
 - open data-quality issues;
-- rows open Lead Detail and return context points back to Dashboard;
-- direct Pipeline action from Dashboard.
+- phone + country shown directly in attention rows;
+- rows open Lead Detail and return to Dashboard;
+- direct Pipeline action.
 
 ### Lead Detail production workspace
 
-- context-aware return behavior: Pipeline → Pipeline, Dashboard → Dashboard, Lead List → Lead List;
+- context-aware return: Pipeline → Pipeline, Dashboard → Dashboard, Lead List → Lead List;
 - compact customer identity/status hero;
 - main **2/3 operational column** for product interests, data-quality warnings, follow-ups and CRM notes;
-- right **1/3 sticky background panel** for non-primary information;
-- right panel tabs: **Aktivite / Submission / Kaynak**;
-- audit history removed from the main vertical flow;
-- submission history removed from the main vertical flow;
-- Meta campaign/adset/ad/form IDs and raw payload remain available without dominating the screen;
-- manual product corrections remain separated from immutable source interests;
-- Lead Detail can refresh after follow-up mutations without breaking return context.
+- right **1/3 sticky background panel**;
+- tabs: **Aktivite / Submission / Kaynak**;
+- audit/submission/raw Meta data removed from the primary vertical workflow but kept fully accessible;
+- manual product corrections stay separated from immutable source interests.
 
-## Acceptance criteria
+### Readability and theme
 
-- [x] Pipeline status update and Lead Detail status update use the same backend service.
-- [x] Every real status change creates activity through the shared M3 service.
-- [x] Failed Kanban mutation visibly rolls back.
-- [x] Follow-up CRUD persists in SQLite and is audited by backend tests.
-- [x] Backend canonicalizes follow-up timestamps to UTC; UI converts at local-time boundaries.
-- [x] Dashboard attention groups use the same follow-up/repeat/quality semantics as the rest of the app.
+- daily-use typography increased across Dashboard, Pipeline, Lead Detail, Lead List, import and settings screens;
+- persistent Light / Dark theme with top-bar toggle;
+- theme preference survives restart and first run follows system preference;
+- theme is applied before React render to avoid light-theme flash;
+- dark-theme contrast audit covers Dashboard headings, Lead names, tables, forms, Kanban, follow-ups, Lead Detail history/submissions/source, import empty state and badges;
+- final import empty-state heading (`Manuel lead dosyası seçin`) uses theme-safe contrast.
+
+## Acceptance / final smoke
+
+- [x] Pipeline status and Lead Detail status use the same backend service.
+- [x] Real status changes create activity through the shared M3 service.
+- [x] Failed Kanban mutation rolls back.
+- [x] Full-card pointer drag + floating preview validated through the Windows UX review loop.
+- [x] Kanban → Lead Detail → Kanban return context and filters validated.
+- [x] Dashboard → Lead Detail → Dashboard return context validated.
+- [x] Follow-up CRUD persists in SQLite and is covered by backend integration tests.
+- [x] UTC/local-time follow-up boundary behavior is covered by backend and UI workflow tests.
+- [x] Dashboard attention groups use shared follow-up/repeat/quality semantics.
 - [x] Pipeline due/overdue quick filters use backend query windows and real totals.
-- [x] Lead Detail technical history is separated from the primary operational workflow.
-- [ ] Floating Kanban drag preview validated on the real Windows development DB.
-- [ ] Dashboard attention/follow-up workflow validated on the real Windows development DB.
-- [ ] New production Lead Detail layout validated on the real Windows development DB.
-- [ ] Final Windows Rust + NSIS packaging gate passes on the final M4 head.
+- [x] Production 2/3 + 1/3 Lead Detail layout validated through iterative Windows UX review.
+- [x] Light/Dark theme and readability reviewed interactively; final leaked contrast states fixed.
+- [x] Existing import/dedup incremental workflow remains intact.
+- [x] 10k contacts / 25k submissions performance smoke remains green.
+- [x] Final frontend lint + unit tests + production build PASS.
+- [x] Final Windows Rust suite PASS.
+- [x] Final Windows Tauri debug NSIS package PASS.
 
-## Remaining before M4 PASS
+## Final validation reference
 
-1. Real Windows UX validation of Dashboard, Kanban drag preview and context-aware navigation.
-2. Real Windows UX validation of the new 2/3 + 1/3 Lead Detail workspace.
-3. Real follow-up create/reschedule/complete/cancel smoke test.
-4. Final frontend + Windows Rust + NSIS package gate.
-5. Mark PR #8 ready and squash merge to `main`.
+Final code candidate before documentation closeout: `17d04c3388538b0b7ea45dde364fa6f3b3fc86dd`.
+
+GitHub Actions run `32703217989`:
+
+- Frontend checks — **PASS**
+- Rust tests (Windows) — **PASS**
+- Tauri debug package (Windows / NSIS) — **PASS**
+
+M4 is complete and ready for squash merge to `main`.

@@ -8,6 +8,17 @@ import "./features/pipeline/pipeline-follow-up.css";
 import "./styles.css";
 import "./theme.css";
 
+const storedTheme = window.localStorage.getItem("ertip-lead-manager-theme");
+const initialTheme =
+  storedTheme === "light" || storedTheme === "dark"
+    ? storedTheme
+    : window.matchMedia?.("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+
+document.documentElement.dataset.theme = initialTheme;
+document.documentElement.style.colorScheme = initialTheme;
+
 const root = document.getElementById("root");
 
 if (!root) {

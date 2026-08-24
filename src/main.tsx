@@ -6,6 +6,7 @@ import "./features/leads/lead-list-link.css";
 import "./features/leads/product-overrides.css";
 import "./features/pipeline/pipeline-follow-up.css";
 import "./styles.css";
+import "./theme.css";
 
 const root = document.getElementById("root");
 

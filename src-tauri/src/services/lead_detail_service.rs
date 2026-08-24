@@ -10,6 +10,7 @@ use crate::repositories::lead_detail_repository::{
     LeadActivityRecord, LeadDetailRepository, LeadDetailSubmissionRecord, LeadProductOverrideRecord,
     LeadQualityIssueRecord,
 };
+use crate::repositories::team_repository::TeamRepository;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -21,6 +22,14 @@ pub struct LeadDetailProductOverride {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct LeadDetailAssignee {
+    pub id: String,
+    pub display_name: String,
+    pub is_active: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct LeadDetailContact {
     pub id: String,
     pub display_name: String,
@@ -28,6 +37,7 @@ pub struct LeadDetailContact {
     pub primary_phone: Option<String>,
     pub country_code: Option<String>,
     pub status: String,
+    pub assignee: Option<LeadDetailAssignee>,
     pub created_at: String,
     pub updated_at: String,
     pub latest_submission_at: Option<String>,
@@ -85,6 +95,8 @@ pub struct LeadDetailActivity {
     pub activity_type: String,
     pub occurred_at: String,
     pub payload_json: String,
+    pub actor_user_id: Option<String>,
+    pub actor_display_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -110,13 +122,15 @@ pub struct LeadDetailResponse {
 pub struct LeadDetailService {
     repository: LeadDetailRepository,
     crm_repository: LeadCrmRepository,
+    team_repository: TeamRepository,
 }
 
 impl LeadDetailService {
     pub fn new(pool: SqlitePool) -> Self {
         Self {
             repository: LeadDetailRepository::new(pool.clone()),
-            crm_repository: LeadCrmRepository::new(pool),
+            crm_repository: LeadCrmRepository::new(pool.clone()),
+            team_repository: TeamRepository::new(pool),
         }
     }
 
@@ -124,6 +138,16 @@ impl LeadDetailService {
         let Some(contact) = self.repository.contact(contact_id).await? else {
             return Ok(None);
         };
+
+        let assignee = self
+            .team_repository
+            .contact_assignee(contact_id)
+            .await?
+            .map(|record| LeadDetailAssignee {
+                id: record.id,
+                display_name: record.display_name,
+                is_active: record.is_active,
+            });
 
         let submission_records = self.repository.submissions(contact_id).await?;
         let mut automatic_product_interests = BTreeSet::new();
@@ -184,6 +208,7 @@ impl LeadDetailService {
                 primary_phone: contact.primary_phone,
                 country_code: contact.country_code,
                 status: contact.status,
+                assignee,
                 created_at: contact.created_at,
                 updated_at: contact.updated_at,
                 latest_submission_at: contact.latest_submission_at,
@@ -275,5 +300,7 @@ fn map_activity(record: LeadActivityRecord) -> LeadDetailActivity {
         activity_type: record.activity_type,
         occurred_at: record.occurred_at,
         payload_json: record.payload_json,
+        actor_user_id: record.actor_user_id,
+        actor_display_name: record.actor_display_name,
     }
 }

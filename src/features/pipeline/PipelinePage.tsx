@@ -15,6 +15,7 @@ import type {
   LeadStatus,
   ProductCode,
 } from "../leads/types";
+import type { StaffMember } from "../team/types";
 import "./pipeline.css";
 import "./pipeline-drag-preview.css";
 import type { PipelineBoardResponse, PipelineCard } from "./types";
@@ -44,6 +45,7 @@ const productOptions = Object.entries(productLabels) as Array<[ProductCode, stri
 const regionNames = new Intl.DisplayNames(["tr"], { type: "region" });
 const emptyFilters: LeadFilterOptions = { countries: [] };
 const DRAG_THRESHOLD_PX = 7;
+const UNASSIGNED_FILTER = "__UNASSIGNED__";
 
 type FollowUpMode = "" | "OVERDUE" | "TODAY";
 
@@ -51,6 +53,7 @@ interface PipelineRestoreState {
   search: string;
   country: string;
   product: ProductCode | "";
+  assignee: string;
   repeatOnly: boolean;
   warningOnly: boolean;
   includeTerminal: boolean;
@@ -243,6 +246,14 @@ function PipelineCardBody({ card }: { card: PipelineCard }) {
         <div className="pipeline-card-email">{card.primaryEmail}</div>
       ) : null}
 
+      {card.assignedUserName ? (
+        <div className={`pipeline-card-assignee ${card.assignedUserActive === false ? "is-inactive" : ""}`}>
+          <span className="pipeline-card-assignee-dot" />
+          <strong>{card.assignedUserName}</strong>
+          {card.assignedUserActive === false ? <em>Pasif</em> : null}
+        </div>
+      ) : null}
+
       <div className="pipeline-card-chips">
         {card.productInterests.slice(0, 2).map((code) => (
           <span className="lead-product-chip" key={code}>{productLabels[code]}</span>
@@ -280,11 +291,13 @@ export function PipelinePage() {
   const suppressClickRef = useRef(false);
   const [board, setBoard] = useState<PipelineBoardResponse | null>(null);
   const [filterOptions, setFilterOptions] = useState<LeadFilterOptions>(emptyFilters);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
   const [search, setSearch] = useState(initialStateRef.current?.search ?? "");
   const [country, setCountry] = useState(initialStateRef.current?.country ?? "");
   const [product, setProduct] = useState<ProductCode | "">(
     initialStateRef.current?.product ?? "",
   );
+  const [assignee, setAssignee] = useState(initialStateRef.current?.assignee ?? "");
   const [repeatOnly, setRepeatOnly] = useState(initialStateRef.current?.repeatOnly ?? false);
   const [warningOnly, setWarningOnly] = useState(initialStateRef.current?.warningOnly ?? false);
   const [includeTerminal, setIncludeTerminal] = useState(
@@ -320,6 +333,9 @@ export function PipelinePage() {
           search: clean(search),
           countryCode: country || null,
           productCode: product || null,
+          assignedUserId:
+            assignee && assignee !== UNASSIGNED_FILTER ? assignee : null,
+          unassignedOnly: assignee === UNASSIGNED_FILTER,
           repeatOnly,
           warningOnly,
           includeTerminal,
@@ -335,12 +351,21 @@ export function PipelinePage() {
     } finally {
       setLoading(false);
     }
-  }, [country, followUpMode, includeTerminal, product, repeatOnly, search, warningOnly]);
+  }, [assignee, country, followUpMode, includeTerminal, product, repeatOnly, search, warningOnly]);
 
   useEffect(() => {
-    void invoke<LeadFilterOptions>("get_lead_filter_options")
-      .then(setFilterOptions)
-      .catch(() => setFilterOptions(emptyFilters));
+    void Promise.all([
+      invoke<LeadFilterOptions>("get_lead_filter_options"),
+      invoke<StaffMember[]>("list_staff_members", { includeInactive: true }),
+    ])
+      .then(([options, members]) => {
+        setFilterOptions(options);
+        setStaff(members);
+      })
+      .catch(() => {
+        setFilterOptions(emptyFilters);
+        setStaff([]);
+      });
   }, []);
 
   useEffect(() => {
@@ -486,6 +511,7 @@ export function PipelinePage() {
             search,
             country,
             product,
+            assignee,
             repeatOnly,
             warningOnly,
             includeTerminal,
@@ -500,13 +526,14 @@ export function PipelinePage() {
     setSearch("");
     setCountry("");
     setProduct("");
+    setAssignee("");
     setRepeatOnly(false);
     setWarningOnly(false);
     setFollowUpMode("");
   }
 
   const hasFilters = Boolean(
-    search || country || product || repeatOnly || warningOnly || followUpMode,
+    search || country || product || assignee || repeatOnly || warningOnly || followUpMode,
   );
 
   return (
@@ -553,6 +580,19 @@ export function PipelinePage() {
             <option value="">Tüm ürünler</option>
             {productOptions.map(([value, label]) => (
               <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          <span>Sorumlu Personel</span>
+          <select value={assignee} onChange={(event) => setAssignee(event.target.value)}>
+            <option value="">Tüm personeller</option>
+            <option value={UNASSIGNED_FILTER}>Atanmamış</option>
+            {staff.map((member) => (
+              <option key={member.id} value={member.id}>
+                {member.displayName}{member.isActive ? "" : " (Pasif)"}
+              </option>
             ))}
           </select>
         </label>

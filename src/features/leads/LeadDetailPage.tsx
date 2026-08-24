@@ -3,6 +3,7 @@ import { confirm } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import type { AssignmentResult, StaffMember } from "../team/types";
 import { LeadHistoryPanel } from "./LeadHistoryPanel";
 import "./lead-detail.css";
 import type {
@@ -96,10 +97,12 @@ export function LeadDetailPage({
   const { leadId } = useParams();
   const navigate = useNavigate();
   const [detail, setDetail] = useState<LeadDetailResponse | null>(null);
+  const [staff, setStaff] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [statusDraft, setStatusDraft] = useState<LeadStatus>("NEW");
+  const [assigneeDraft, setAssigneeDraft] = useState("");
   const [noteDraft, setNoteDraft] = useState("");
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteBody, setEditingNoteBody] = useState("");
@@ -115,8 +118,15 @@ export function LeadDetailPage({
     if (!response) throw new Error("Lead kaydı bulunamadı.");
     setDetail(response);
     setStatusDraft(response.contact.status);
+    setAssigneeDraft(response.contact.assignee?.id ?? "");
     return response;
   }, [leadId]);
+
+  useEffect(() => {
+    void invoke<StaffMember[]>("list_staff_members", { includeInactive: true })
+      .then(setStaff)
+      .catch(() => setStaff([]));
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -151,6 +161,31 @@ export function LeadDetailPage({
         changed
           ? `Durum ${statusLabels[statusDraft]} olarak güncellendi.`
           : "Durum zaten günceldi.",
+      );
+      await refreshDetail();
+    } catch (mutationError) {
+      setError(commandErrorMessage(mutationError));
+    } finally {
+      setMutating(null);
+    }
+  }
+
+  async function saveAssignee() {
+    if (!detail || assigneeDraft === (detail.contact.assignee?.id ?? "")) return;
+    setMutating("assignee");
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await invoke<AssignmentResult>("assign_lead", {
+        contactId: detail.contact.id,
+        userId: assigneeDraft || null,
+      });
+      setNotice(
+        result.changed
+          ? result.assignee
+            ? `Lead ${result.assignee.displayName} kullanıcısına atandı.`
+            : "Lead ataması kaldırıldı."
+          : "Sorumlu personel zaten günceldi.",
       );
       await refreshDetail();
     } catch (mutationError) {
@@ -329,28 +364,64 @@ export function LeadDetailPage({
         </div>
 
         <div className="lead-detail-crm-actions">
-          <div className="lead-status-editor">
-            <label htmlFor="lead-status-select">Satış Aşaması</label>
-            <div>
-              <select
-                id="lead-status-select"
-                value={statusDraft}
-                onChange={(event) => setStatusDraft(event.target.value as LeadStatus)}
-                disabled={mutating !== null}
-              >
-                {statusOptions.map(([value, label]) => (
-                  <option key={value} value={value}>{label}</option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={saveStatus}
-                disabled={mutating !== null || statusDraft === contact.status}
-              >
-                {mutating === "status" ? "Kaydediliyor…" : "Güncelle"}
-              </button>
+          <div className="lead-detail-crm-control-grid">
+            <div className="lead-status-editor">
+              <label htmlFor="lead-status-select">Satış Aşaması</label>
+              <div>
+                <select
+                  id="lead-status-select"
+                  value={statusDraft}
+                  onChange={(event) => setStatusDraft(event.target.value as LeadStatus)}
+                  disabled={mutating !== null}
+                >
+                  {statusOptions.map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={saveStatus}
+                  disabled={mutating !== null || statusDraft === contact.status}
+                >
+                  {mutating === "status" ? "Kaydediliyor…" : "Güncelle"}
+                </button>
+              </div>
+            </div>
+
+            <div className="lead-assignee-editor">
+              <label htmlFor="lead-assignee-select">Sorumlu Personel</label>
+              <div>
+                <select
+                  id="lead-assignee-select"
+                  value={assigneeDraft}
+                  onChange={(event) => setAssigneeDraft(event.target.value)}
+                  disabled={mutating !== null}
+                >
+                  <option value="">Atanmamış</option>
+                  {staff.map((member) => (
+                    <option
+                      key={member.id}
+                      value={member.id}
+                      disabled={!member.isActive && member.id !== contact.assignee?.id}
+                    >
+                      {member.displayName}{member.isActive ? "" : " (Pasif)"}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={saveAssignee}
+                  disabled={mutating !== null || assigneeDraft === (contact.assignee?.id ?? "")}
+                >
+                  {mutating === "assignee" ? "Atanıyor…" : "Ata"}
+                </button>
+              </div>
+              {contact.assignee?.isActive === false ? (
+                <small>Mevcut sorumlu pasif. Geçmiş korunur; yeni bir aktif personel seçebilirsiniz.</small>
+              ) : null}
             </div>
           </div>
+
           <div className="lead-detail-metrics lead-detail-metrics-production">
             <div><strong>{contact.submissionCount}</strong><span>form kaydı</span></div>
             <div><strong>{openIssues.length}</strong><span>açık uyarı</span></div>

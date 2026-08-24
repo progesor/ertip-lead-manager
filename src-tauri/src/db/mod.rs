@@ -81,7 +81,7 @@ mod tests {
         let database = Database::connect_memory().await.expect("open test database");
         let version = database.schema_version().await.expect("read schema version");
 
-        assert_eq!(version, 3);
+        assert_eq!(version, 4);
     }
 
     #[tokio::test]

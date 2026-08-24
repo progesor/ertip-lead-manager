@@ -10,6 +10,7 @@ pub mod lead_crm_service;
 pub mod lead_detail_service;
 pub mod lead_workspace_service;
 pub mod pipeline_service;
+pub mod team_service;
 
 #[cfg(test)]
 mod analytics_performance_tests;

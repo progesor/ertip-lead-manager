@@ -61,6 +61,8 @@ pub struct LeadActivityRecord {
     pub activity_type: String,
     pub occurred_at: String,
     pub payload_json: String,
+    pub actor_user_id: Option<String>,
+    pub actor_display_name: Option<String>,
 }
 
 #[derive(Debug, Clone, FromRow)]
@@ -174,10 +176,12 @@ impl LeadDetailRepository {
     ) -> Result<Vec<LeadActivityRecord>, AppError> {
         let rows = sqlx::query_as::<_, LeadActivityRecord>(
             r#"
-            SELECT id, activity_type, occurred_at, payload_json
-            FROM lead_activities
-            WHERE lead_contact_id = ?
-            ORDER BY occurred_at DESC, id DESC
+            SELECT a.id, a.activity_type, a.occurred_at, a.payload_json,
+                   a.actor_user_id, actor.display_name AS actor_display_name
+            FROM lead_activities a
+            LEFT JOIN app_users actor ON actor.id = a.actor_user_id
+            WHERE a.lead_contact_id = ?
+            ORDER BY a.occurred_at DESC, a.id DESC
             LIMIT 100
             "#,
         )

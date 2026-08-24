@@ -1,7 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import type { StaffMember } from "../team/types";
 import "./leads.css";
+import "./lead-list-assignee.css";
 import type {
   CommandError,
   DataQualityIssueType,
@@ -13,6 +15,7 @@ import type {
 } from "./types";
 
 const PAGE_SIZE = 25;
+const UNASSIGNED_FILTER = "__UNASSIGNED__";
 
 const statusLabels: Record<LeadStatus, string> = {
   NEW: "Yeni",
@@ -112,12 +115,14 @@ export function LeadsPage() {
   const navigate = useNavigate();
   const [response, setResponse] = useState<LeadListResponse>(emptyResponse);
   const [filterOptions, setFilterOptions] = useState<LeadFilterOptions>(emptyFilterOptions);
+  const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<LeadStatus | "">("");
   const [country, setCountry] = useState("");
   const [countryQuery, setCountryQuery] = useState("");
   const [countryOpen, setCountryOpen] = useState(false);
   const [product, setProduct] = useState<ProductCode | "">("");
+  const [assignee, setAssignee] = useState("");
   const [repeatOnly, setRepeatOnly] = useState(false);
   const [warningOnly, setWarningOnly] = useState(false);
   const [sort, setSort] = useState<LeadListSort>("LATEST_DESC");
@@ -138,6 +143,8 @@ export function LeadsPage() {
           status: status || null,
           countryCode: country || null,
           productCode: product || null,
+          assignedUserId: assignee && assignee !== UNASSIGNED_FILTER ? assignee : null,
+          unassignedOnly: assignee === UNASSIGNED_FILTER,
           repeatOnly,
           warningOnly,
           sort,
@@ -158,11 +165,15 @@ export function LeadsPage() {
         setLoading(false);
       }
     }
-  }, [country, page, product, repeatOnly, search, sort, status, warningOnly]);
+  }, [assignee, country, page, product, repeatOnly, search, sort, status, warningOnly]);
 
   useEffect(() => {
     void invoke<LeadFilterOptions>("get_lead_filter_options")
       .then(setFilterOptions)
+      .catch((loadError) => setError((current) => current ?? commandErrorMessage(loadError)));
+
+    void invoke<StaffMember[]>("list_staff_members", { includeInactive: true })
+      .then(setStaffMembers)
       .catch((loadError) => setError((current) => current ?? commandErrorMessage(loadError)));
   }, []);
 
@@ -185,6 +196,7 @@ export function LeadsPage() {
     setCountryQuery("");
     setCountryOpen(false);
     setProduct("");
+    setAssignee("");
     setRepeatOnly(false);
     setWarningOnly(false);
     setSort("LATEST_DESC");
@@ -200,7 +212,9 @@ export function LeadsPage() {
 
   const start = response.total === 0 ? 0 : response.page * response.pageSize + 1;
   const end = Math.min(response.total, (response.page + 1) * response.pageSize);
-  const hasFilters = Boolean(search || status || country || countryQuery || product || repeatOnly || warningOnly);
+  const hasFilters = Boolean(
+    search || status || country || countryQuery || product || assignee || repeatOnly || warningOnly,
+  );
   const normalizedCountryQuery = countryQuery.trim().toLocaleLowerCase("tr-TR");
   const filteredCountries = filterOptions.countries.filter((code) => {
     if (!normalizedCountryQuery) return true;
@@ -337,6 +351,25 @@ export function LeadsPage() {
           </label>
 
           <label>
+            <span>Sorumlu Personel</span>
+            <select
+              value={assignee}
+              onChange={(event) => {
+                setAssignee(event.target.value);
+                resetPage();
+              }}
+            >
+              <option value="">Tüm personel</option>
+              <option value={UNASSIGNED_FILTER}>Atanmamış</option>
+              {staffMembers.map((member) => (
+                <option value={member.id} key={member.id}>
+                  {member.displayName}{member.isActive ? "" : " (Pasif)"}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
             <span>Sıralama</span>
             <select
               value={sort}
@@ -394,6 +427,7 @@ export function LeadsPage() {
               <tr>
                 <th>Lead</th>
                 <th>Durum</th>
+                <th>Sorumlu</th>
                 <th>Ülke</th>
                 <th>Platform</th>
                 <th>Ürün İlgisi</th>
@@ -428,6 +462,17 @@ export function LeadsPage() {
                     <span className={`lead-status lead-status-${lead.status.toLowerCase()}`}>
                       {statusLabels[lead.status]}
                     </span>
+                  </td>
+                  <td>
+                    {lead.assignedUserName ? (
+                      <span className={`lead-assignee-pill ${lead.assignedUserActive === false ? "is-inactive" : ""}`}>
+                        <span className="lead-assignee-dot" />
+                        {lead.assignedUserName}
+                        {lead.assignedUserActive === false ? <em>Pasif</em> : null}
+                      </span>
+                    ) : (
+                      <span className="lead-assignee-unassigned">Atanmamış</span>
+                    )}
                   </td>
                   <td>
                     <span className="lead-country" title={lead.countryCode ?? undefined}>

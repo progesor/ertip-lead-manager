@@ -1,3 +1,13 @@
+.leads-search-row {
+  grid-template-columns:
+    minmax(250px, 1.45fr)
+    minmax(145px, 0.78fr)
+    minmax(165px, 0.9fr)
+    minmax(180px, 0.95fr)
+    minmax(180px, 0.95fr)
+    minmax(165px, 0.85fr);
+}
+
 .lead-assignee-pill {
   display: inline-flex;
   min-height: 26px;
@@ -42,4 +52,16 @@
   color: var(--muted);
   font-size: 11px;
   font-weight: 650;
+}
+
+@media (max-width: 1420px) {
+  .leads-search-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 860px) {
+  .leads-search-row {
+    grid-template-columns: 1fr;
+  }
 }

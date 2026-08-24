@@ -59,6 +59,24 @@
   font-size: 10px;
 }
 
+html[data-theme="dark"] .import-start-panel h2,
+html[data-theme="dark"] .import-source-panel h2,
+html[data-theme="dark"] .import-history-file {
+  color: #edf3f9;
+}
+
+html[data-theme="dark"] .import-start-panel p,
+html[data-theme="dark"] .import-history-empty,
+html[data-theme="dark"] .import-history-sheet {
+  color: #aebbc9;
+}
+
+html[data-theme="dark"] .import-start-panel .empty-icon {
+  border-color: #405064;
+  background: #202d3a;
+  color: #b9cee6;
+}
+
 @media (max-width: 900px) {
   .import-source-panel {
     flex-direction: column;

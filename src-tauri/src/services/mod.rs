@@ -1,5 +1,6 @@
 //! Application services orchestrate domain rules and repositories.
 
+pub mod dashboard_service;
 pub mod follow_up_service;
 pub mod import_commit_service;
 pub mod import_history_service;

@@ -38,6 +38,14 @@ pub struct AnalyticsBreakdownRecord {
     pub unique_contacts: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnalyticsNamedBreakdownRecord {
+    pub key: String,
+    pub name: String,
+    pub submissions: i64,
+    pub unique_contacts: i64,
+}
+
 #[derive(Clone)]
 pub struct AnalyticsRepository {
     pool: SqlitePool,
@@ -239,6 +247,42 @@ impl AnalyticsRepository {
         self.breakdown_rows(&sql, from_utc, to_utc).await
     }
 
+    pub async fn campaign_breakdown(
+        &self,
+        from_utc: Option<&str>,
+        to_utc: Option<&str>,
+    ) -> Result<Vec<AnalyticsNamedBreakdownRecord>, AppError> {
+        self.named_breakdown("campaign_id", "campaign_name", from_utc, to_utc)
+            .await
+    }
+
+    pub async fn form_breakdown(
+        &self,
+        from_utc: Option<&str>,
+        to_utc: Option<&str>,
+    ) -> Result<Vec<AnalyticsNamedBreakdownRecord>, AppError> {
+        self.named_breakdown("form_id", "form_name", from_utc, to_utc)
+            .await
+    }
+
+    pub async fn adset_breakdown(
+        &self,
+        from_utc: Option<&str>,
+        to_utc: Option<&str>,
+    ) -> Result<Vec<AnalyticsNamedBreakdownRecord>, AppError> {
+        self.named_breakdown("adset_id", "adset_name", from_utc, to_utc)
+            .await
+    }
+
+    pub async fn ad_breakdown(
+        &self,
+        from_utc: Option<&str>,
+        to_utc: Option<&str>,
+    ) -> Result<Vec<AnalyticsNamedBreakdownRecord>, AppError> {
+        self.named_breakdown("ad_id", "ad_name", from_utc, to_utc)
+            .await
+    }
+
     async fn breakdown_rows(
         &self,
         sql: &str,
@@ -252,6 +296,48 @@ impl AnalyticsRepository {
             .map(|row| {
                 Ok(AnalyticsBreakdownRecord {
                     key: row.try_get("key")?,
+                    submissions: row.get("submissions"),
+                    unique_contacts: row.get("unique_contacts"),
+                })
+            })
+            .collect()
+    }
+
+    async fn named_breakdown(
+        &self,
+        id_column: &str,
+        name_column: &str,
+        from_utc: Option<&str>,
+        to_utc: Option<&str>,
+    ) -> Result<Vec<AnalyticsNamedBreakdownRecord>, AppError> {
+        let key_expr = format!(
+            "COALESCE(NULLIF(TRIM(s.{id_column}), ''), NULLIF(TRIM(s.{name_column}), ''), 'UNKNOWN')"
+        );
+        let name_expr = format!(
+            "COALESCE(NULLIF(TRIM(s.{name_column}), ''), NULLIF(TRIM(s.{id_column}), ''), 'Bilinmiyor')"
+        );
+        let sql = format!(
+            r#"
+            SELECT
+                {key_expr} AS key,
+                {name_expr} AS name,
+                COUNT(*) AS submissions,
+                COUNT(DISTINCT s.lead_contact_id) AS unique_contacts
+            FROM lead_submissions s
+            WHERE (? IS NULL OR {TS} >= ?)
+              AND (? IS NULL OR {TS} < ?)
+            GROUP BY {key_expr}, {name_expr}
+            ORDER BY submissions DESC, name COLLATE NOCASE ASC, key ASC
+            "#
+        );
+        let rows = bind_window(sqlx::query(&sql), from_utc, to_utc)
+            .fetch_all(&self.pool)
+            .await?;
+        rows.into_iter()
+            .map(|row| {
+                Ok(AnalyticsNamedBreakdownRecord {
+                    key: row.try_get("key")?,
+                    name: row.try_get("name")?,
                     submissions: row.get("submissions"),
                     unique_contacts: row.get("unique_contacts"),
                 })

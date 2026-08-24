@@ -2,7 +2,7 @@
 
 Windows-first, local-first lead management and analytics application for Meta lead exports used by Ertip Medical.
 
-> Status: **M4 — Pipeline and Follow-ups in final validation** on `feat/m4-pipeline-followups`. M0–M3 are complete and merged to `main`.
+> Status: **M4 — Pipeline and Follow-ups complete.** M0–M4 are complete; PR #8 is ready for squash merge to `main`.
 
 ## Product summary
 
@@ -18,11 +18,12 @@ The application is intentionally organized around this daily-use hierarchy:
 Current capabilities include:
 
 - real SQLite-backed Dashboard KPIs and attention queues;
+- phone + country prioritized in daily Dashboard/Kanban customer context;
 - pointer-based full-card Kanban drag/drop with floating preview and audited status changes;
 - Kanban search/country/product/repeat/warning plus due-today/overdue quick filters;
 - follow-up create/reschedule/complete/cancel with canonical UTC persistence;
 - context-aware navigation between Dashboard/Kanban and Lead Detail;
-- production Lead Detail layout with a 2/3 operational workspace and 1/3 sticky tabbed history/source panel;
+- production Lead Detail layout with a 2/3 operational workspace and 1/3 sticky tabbed activity/submission/source panel;
 - CRM lifecycle status changes and immutable activity audit;
 - editable CRM notes;
 - manual contact-level product-interest corrections stored separately from imported source data;
@@ -30,7 +31,9 @@ Current capabilities include:
 - real SQLite-backed Lead list with search/filter/sort/pagination;
 - dynamic country filtering with Turkish country names;
 - platform, repeat and data-quality indicators;
-- 10k-contact / 25k-submission workspace smoke coverage.
+- persistent Light / Dark theme with system-default first run and application-wide contrast/readability pass;
+- 10k-contact / 25k-submission workspace smoke coverage;
+- Windows CI coverage for frontend, Rust and NSIS packaging.
 
 V1 deliberately does **not** connect to Google Sheets, Meta APIs, WhatsApp APIs, cloud databases, or multi-user authentication. Core workflows remain usable offline.
 

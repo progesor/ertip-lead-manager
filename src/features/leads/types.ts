@@ -34,6 +34,8 @@ export interface LeadListRequest {
   status: LeadStatus | null;
   countryCode: string | null;
   productCode: ProductCode | null;
+  assignedUserId: string | null;
+  unassignedOnly: boolean;
   repeatOnly: boolean;
   warningOnly: boolean;
   sort: LeadListSort;
@@ -53,6 +55,9 @@ export interface LeadListItem {
   primaryPhone: string | null;
   countryCode: string | null;
   status: LeadStatus;
+  assignedUserId: string | null;
+  assignedUserName: string | null;
+  assignedUserActive: boolean | null;
   latestSubmissionAt: string | null;
   submissionCount: number;
   isRepeat: boolean;

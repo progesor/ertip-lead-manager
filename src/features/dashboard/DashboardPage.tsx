@@ -12,6 +12,13 @@ interface DashboardKpis {
   wonContacts: number;
 }
 
+interface DashboardAnalyticsSummary {
+  submissions: number;
+  uniqueContacts: number;
+  repeatSubmissions: number;
+  wonContacts: number;
+}
+
 interface DashboardAttentionLead {
   id: string;
   displayName: string;
@@ -30,6 +37,7 @@ interface DashboardAttentionGroup {
 
 interface DashboardAttentionResponse {
   kpis: DashboardKpis;
+  analytics30d: DashboardAnalyticsSummary;
   newUncontacted: DashboardAttentionGroup;
   dueToday: DashboardAttentionGroup;
   overdue: DashboardAttentionGroup;
@@ -59,36 +67,11 @@ const statusLabels: Record<LeadStatus, string> = {
 };
 
 const attentionDefinitions: AttentionDefinition[] = [
-  {
-    key: "overdue",
-    title: "Gecikmiş Takipler",
-    hint: "Zamanı geçmiş açık follow-up'lar",
-    tone: "danger",
-  },
-  {
-    key: "dueToday",
-    title: "Bugünkü Takipler",
-    hint: "Bugün aksiyon bekleyen leadler",
-    tone: "warning",
-  },
-  {
-    key: "newUncontacted",
-    title: "Yeni Leadler",
-    hint: "Henüz iletişime geçilmemiş leadler",
-    tone: "primary",
-  },
-  {
-    key: "recentRepeats",
-    title: "Recent Repeat",
-    hint: "Son 7 günde yeniden form gönderenler",
-    tone: "info",
-  },
-  {
-    key: "openQualityIssues",
-    title: "Veri Uyarıları",
-    hint: "Açık veri-kalite sorunları",
-    tone: "neutral",
-  },
+  { key: "overdue", title: "Gecikmiş Takipler", hint: "Zamanı geçmiş açık follow-up'lar", tone: "danger" },
+  { key: "dueToday", title: "Bugünkü Takipler", hint: "Bugün aksiyon bekleyen leadler", tone: "warning" },
+  { key: "newUncontacted", title: "Yeni Leadler", hint: "Henüz iletişime geçilmemiş leadler", tone: "primary" },
+  { key: "recentRepeats", title: "Recent Repeat", hint: "Son 7 günde yeniden form gönderenler", tone: "info" },
+  { key: "openQualityIssues", title: "Veri Uyarıları", hint: "Açık veri-kalite sorunları", tone: "neutral" },
 ];
 
 const regionNames = new Intl.DisplayNames(["tr"], { type: "region" });
@@ -97,10 +80,7 @@ function formatDate(value: string | null) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("tr-TR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(date);
+  return new Intl.DateTimeFormat("tr-TR", { dateStyle: "short", timeStyle: "short" }).format(date);
 }
 
 function formatCountry(code: string | null) {
@@ -114,6 +94,13 @@ function formatCountry(code: string | null) {
   }
 }
 
+function formatPercent(value: number, denominator: number) {
+  if (denominator <= 0) return "0%";
+  return new Intl.NumberFormat("tr-TR", { style: "percent", maximumFractionDigits: 1 }).format(
+    value / denominator,
+  );
+}
+
 function commandErrorMessage(error: unknown) {
   if (typeof error === "object" && error !== null && "message" in error) {
     return String((error as CommandError).message);
@@ -124,22 +111,16 @@ function commandErrorMessage(error: unknown) {
 
 function dashboardRequest() {
   const now = new Date();
-  const tomorrowStart = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() + 1,
-    0,
-    0,
-    0,
-    0,
-  );
+  const tomorrowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
   const recentRepeatSince = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const analyticsSince = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29, 0, 0, 0, 0);
 
   return {
     nowUtc: now.toISOString(),
     todayStartUtc: now.toISOString(),
     tomorrowStartUtc: tomorrowStart.toISOString(),
     recentRepeatSinceUtc: recentRepeatSince.toISOString(),
+    analyticsSinceUtc: analyticsSince.toISOString(),
     groupLimit: 6,
   };
 }
@@ -184,10 +165,7 @@ export function DashboardPage() {
 
   function openLead(contactId: string) {
     navigate(`/leads/${contactId}`, {
-      state: {
-        returnTo: "/",
-        returnLabel: "Genel Bakış'a Dön",
-      },
+      state: { returnTo: "/", returnLabel: "Genel Bakış'a Dön" },
     });
   }
 
@@ -199,6 +177,7 @@ export function DashboardPage() {
     ["Teklif", kpis?.quoteSentContacts ?? 0, "QUOTE_SENT"],
     ["Kazanılan", kpis?.wonContacts ?? 0, "WON"],
   ] as const;
+  const analytics = dashboard?.analytics30d;
 
   return (
     <section className="page-stack dashboard-page">
@@ -254,23 +233,14 @@ export function DashboardPage() {
                 {(group?.items ?? []).map((item) => {
                   const countLabel = itemCountLabel(definition.key, item.count);
                   return (
-                    <button
-                      type="button"
-                      className="dashboard-attention-item"
-                      key={item.id}
-                      onClick={() => openLead(item.id)}
-                    >
+                    <button type="button" className="dashboard-attention-item" key={item.id} onClick={() => openLead(item.id)}>
                       <div className="dashboard-attention-item-main">
                         <strong>{item.displayName}</strong>
-                        <span className="dashboard-attention-phone">
-                          {item.primaryPhone ?? "Telefon bilgisi yok"}
-                        </span>
+                        <span className="dashboard-attention-phone">{item.primaryPhone ?? "Telefon bilgisi yok"}</span>
                         <span>{formatCountry(item.countryCode)}</span>
                       </div>
                       <div className="dashboard-attention-item-meta">
-                        <span className={`lead-status lead-status-${item.status.toLowerCase()}`}>
-                          {statusLabels[item.status]}
-                        </span>
+                        <span className={`lead-status lead-status-${item.status.toLowerCase()}`}>{statusLabels[item.status]}</span>
                         <span>{formatDate(itemTimestamp(definition.key, item))}</span>
                         {countLabel ? <em>{countLabel}</em> : null}
                       </div>
@@ -284,23 +254,28 @@ export function DashboardPage() {
               </div>
 
               {group && group.total > group.items.length ? (
-                <div className="dashboard-attention-more">
-                  İlk {group.items.length} kayıt gösteriliyor · toplam {group.total}
-                </div>
+                <div className="dashboard-attention-more">İlk {group.items.length} kayıt gösteriliyor · toplam {group.total}</div>
               ) : null}
             </article>
           );
         })}
       </div>
 
-      <article className="panel dashboard-analytics-teaser">
-        <div className="panel-heading">
-          <div>
-            <h2>Lead Akışı ve Dönüşüm</h2>
-            <p>Zaman serisi, ülke/ürün/kampanya kırılımı ve conversion analizi M5'te bu alana bağlanacak.</p>
-          </div>
-          <span className="placeholder-pill">M5 Analytics</span>
+      <article className="panel dashboard-analytics-summary">
+        <div className="dashboard-analytics-summary-copy">
+          <div className="eyebrow">SON 30 GÜN</div>
+          <strong>Lead Akışı</strong>
+          <span>Detaylı trend ve kaynak kırılımları Analiz ekranında.</span>
         </div>
+        <div className="dashboard-analytics-metrics">
+          <div><strong>{analytics?.submissions ?? 0}</strong><span>submission</span></div>
+          <div><strong>{analytics?.uniqueContacts ?? 0}</strong><span>benzersiz kişi</span></div>
+          <div><strong>{formatPercent(analytics?.repeatSubmissions ?? 0, analytics?.submissions ?? 0)}</strong><span>repeat oranı</span></div>
+          <div><strong>{formatPercent(analytics?.wonContacts ?? 0, analytics?.uniqueContacts ?? 0)}</strong><span>mevcut WON</span></div>
+        </div>
+        <button type="button" className="dashboard-analytics-link" onClick={() => navigate("/analytics")}>
+          Analize Git →
+        </button>
       </article>
     </section>
   );

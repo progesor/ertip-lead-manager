@@ -1,3 +1,4 @@
+pub mod analytics_repository;
 pub mod contact_repository;
 pub mod follow_up_repository;
 pub mod import_history_repository;

@@ -1,0 +1,20 @@
+.lead-detail-workspace {
+  position: relative;
+}
+
+.lead-detail-workspace.has-custom-return > .lead-detail-page .lead-back-button {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.lead-detail-origin-return {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 10;
+}
+
+.lead-detail-origin-return .lead-back-button {
+  visibility: visible;
+  pointer-events: auto;
+}

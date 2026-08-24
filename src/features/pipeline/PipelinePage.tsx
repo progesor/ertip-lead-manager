@@ -37,6 +37,8 @@ const regionNames = new Intl.DisplayNames(["tr"], { type: "region" });
 const emptyFilters: LeadFilterOptions = { countries: [] };
 const DRAG_THRESHOLD_PX = 7;
 
+type FollowUpMode = "" | "OVERDUE" | "TODAY";
+
 interface PipelineRestoreState {
   search: string;
   country: string;
@@ -44,6 +46,7 @@ interface PipelineRestoreState {
   repeatOnly: boolean;
   warningOnly: boolean;
   includeTerminal: boolean;
+  followUpMode: FollowUpMode;
 }
 
 interface PipelineRouteState {
@@ -124,6 +127,23 @@ function followUpLabel(value: string) {
   if (kind === "overdue") return `Gecikmiş · ${formatDate(value)}`;
   if (kind === "today") return `Bugün · ${formatDate(value)}`;
   return `Takip · ${formatDate(value)}`;
+}
+
+function pipelineTimeWindow() {
+  const now = new Date();
+  const tomorrowStart = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() + 1,
+    0,
+    0,
+    0,
+    0,
+  );
+  return {
+    nowUtc: now.toISOString(),
+    tomorrowStartUtc: tomorrowStart.toISOString(),
+  };
 }
 
 function commandErrorMessage(error: unknown) {
@@ -258,6 +278,9 @@ export function PipelinePage() {
   const [includeTerminal, setIncludeTerminal] = useState(
     initialStateRef.current?.includeTerminal ?? false,
   );
+  const [followUpMode, setFollowUpMode] = useState<FollowUpMode>(
+    initialStateRef.current?.followUpMode ?? "",
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -279,6 +302,7 @@ export function PipelinePage() {
     setLoading(true);
     setError(null);
     try {
+      const timeWindow = pipelineTimeWindow();
       const response = await invoke<PipelineBoardResponse>("get_pipeline_board", {
         request: {
           search: clean(search),
@@ -287,6 +311,9 @@ export function PipelinePage() {
           repeatOnly,
           warningOnly,
           includeTerminal,
+          followUpMode: followUpMode || null,
+          nowUtc: timeWindow.nowUtc,
+          tomorrowStartUtc: timeWindow.tomorrowStartUtc,
           perColumnLimit: 100,
         },
       });
@@ -296,7 +323,7 @@ export function PipelinePage() {
     } finally {
       setLoading(false);
     }
-  }, [country, includeTerminal, product, repeatOnly, search, warningOnly]);
+  }, [country, followUpMode, includeTerminal, product, repeatOnly, search, warningOnly]);
 
   useEffect(() => {
     void invoke<LeadFilterOptions>("get_lead_filter_options")
@@ -450,6 +477,7 @@ export function PipelinePage() {
             repeatOnly,
             warningOnly,
             includeTerminal,
+            followUpMode,
           } satisfies PipelineRestoreState,
         },
       },
@@ -462,9 +490,12 @@ export function PipelinePage() {
     setProduct("");
     setRepeatOnly(false);
     setWarningOnly(false);
+    setFollowUpMode("");
   }
 
-  const hasFilters = Boolean(search || country || product || repeatOnly || warningOnly);
+  const hasFilters = Boolean(
+    search || country || product || repeatOnly || warningOnly || followUpMode,
+  );
 
   return (
     <section className="page-stack pipeline-page">
@@ -515,6 +546,26 @@ export function PipelinePage() {
         </label>
 
         <div className="pipeline-toolbar-actions">
+          <button
+            type="button"
+            className={followUpMode === "OVERDUE" ? "is-active" : ""}
+            aria-pressed={followUpMode === "OVERDUE"}
+            onClick={() =>
+              setFollowUpMode((value) => (value === "OVERDUE" ? "" : "OVERDUE"))
+            }
+          >
+            Gecikmiş
+          </button>
+          <button
+            type="button"
+            className={followUpMode === "TODAY" ? "is-active" : ""}
+            aria-pressed={followUpMode === "TODAY"}
+            onClick={() =>
+              setFollowUpMode((value) => (value === "TODAY" ? "" : "TODAY"))
+            }
+          >
+            Bugün Takip
+          </button>
           <button
             type="button"
             className={repeatOnly ? "is-active" : ""}

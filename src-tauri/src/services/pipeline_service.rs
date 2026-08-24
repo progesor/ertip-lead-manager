@@ -1,3 +1,4 @@
+use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
@@ -21,6 +22,9 @@ pub struct PipelineBoardRequest {
     pub repeat_only: Option<bool>,
     pub warning_only: Option<bool>,
     pub include_terminal: Option<bool>,
+    pub follow_up_mode: Option<String>,
+    pub now_utc: Option<String>,
+    pub tomorrow_start_utc: Option<String>,
     pub per_column_limit: Option<u32>,
 }
 
@@ -80,6 +84,9 @@ impl PipelineService {
             .unwrap_or(DEFAULT_COLUMN_LIMIT)
             .clamp(1, MAX_COLUMN_LIMIT);
 
+        let (follow_up_due_from, follow_up_due_to, follow_up_due_before) =
+            follow_up_window(&request)?;
+
         let base_filters = LeadListFilters {
             search: clean_optional(request.search),
             status: None,
@@ -88,6 +95,9 @@ impl PipelineService {
             product_code: clean_optional(request.product_code),
             repeat_only: request.repeat_only.unwrap_or(false),
             warning_only: request.warning_only.unwrap_or(false),
+            follow_up_due_from,
+            follow_up_due_to,
+            follow_up_due_before,
         };
 
         let follow_up_summaries = self.follow_up_repository.open_summaries().await?;
@@ -156,6 +166,62 @@ impl PipelineService {
     }
 }
 
+fn follow_up_window(
+    request: &PipelineBoardRequest,
+) -> Result<(Option<String>, Option<String>, Option<String>), AppError> {
+    let mode = clean_optional(request.follow_up_mode.clone())
+        .map(|value| value.to_ascii_uppercase());
+
+    match mode.as_deref() {
+        None => Ok((None, None, None)),
+        Some("OVERDUE") => {
+            let now = canonical_utc(
+                request
+                    .now_utc
+                    .as_deref()
+                    .ok_or_else(|| AppError::Validation("nowUtc is required for OVERDUE".to_string()))?,
+                "nowUtc",
+            )?;
+            Ok((None, None, Some(now)))
+        }
+        Some("TODAY") => {
+            let now = canonical_utc(
+                request
+                    .now_utc
+                    .as_deref()
+                    .ok_or_else(|| AppError::Validation("nowUtc is required for TODAY".to_string()))?,
+                "nowUtc",
+            )?;
+            let tomorrow = canonical_utc(
+                request
+                    .tomorrow_start_utc
+                    .as_deref()
+                    .ok_or_else(|| {
+                        AppError::Validation("tomorrowStartUtc is required for TODAY".to_string())
+                    })?,
+                "tomorrowStartUtc",
+            )?;
+            if now >= tomorrow {
+                return Err(AppError::Validation(
+                    "nowUtc must be before tomorrowStartUtc".to_string(),
+                ));
+            }
+            Ok((Some(now), Some(tomorrow), None))
+        }
+        Some(value) => Err(AppError::Validation(format!(
+            "unsupported pipeline follow-up mode: {value}"
+        ))),
+    }
+}
+
+fn canonical_utc(value: &str, field: &str) -> Result<String, AppError> {
+    let parsed = DateTime::parse_from_rfc3339(value.trim())
+        .map_err(|_| AppError::Validation(format!("{field} must be RFC3339")))?;
+    Ok(parsed
+        .with_timezone(&Utc)
+        .to_rfc3339_opts(SecondsFormat::Millis, true))
+}
+
 fn clean_optional(value: Option<String>) -> Option<String> {
     value
         .map(|value| value.trim().to_string())
@@ -170,7 +236,7 @@ mod tests {
     use crate::db::Database;
 
     #[tokio::test]
-    async fn pipeline_groups_contacts_by_status_and_hides_terminal_columns_by_default() {
+    async fn pipeline_groups_contacts_and_filters_follow_up_attention_windows() {
         let database = Database::connect_memory().await.expect("open database");
         let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
 
@@ -194,12 +260,13 @@ mod tests {
         }
 
         sqlx::query(
-            "INSERT INTO follow_ups (id, lead_contact_id, due_at, status, note, created_at) VALUES ('pipeline-follow-up', 'pipeline-new', '2026-08-23T08:00:00.000Z', 'OPEN', 'Ara', ?)",
+            "INSERT INTO follow_ups (id, lead_contact_id, due_at, status, note, created_at) VALUES ('pipeline-overdue', 'pipeline-new', '2026-08-24T06:00:00.000Z', 'OPEN', 'Ara', ?), ('pipeline-today', 'pipeline-contacted', '2026-08-24T12:00:00.000Z', 'OPEN', 'Teklif sor', ?)",
         )
+        .bind(&now)
         .bind(&now)
         .execute(database.pool())
         .await
-        .expect("seed pipeline follow-up");
+        .expect("seed pipeline follow-ups");
 
         let service = PipelineService::new(database.pool().clone());
         let active = service
@@ -211,12 +278,40 @@ mod tests {
         assert_eq!(active.visible_total, 2);
         assert_eq!(active.columns[0].status, "NEW");
         assert_eq!(active.columns[0].cards[0].id, "pipeline-new");
-        assert_eq!(
-            active.columns[0].cards[0].next_follow_up_at.as_deref(),
-            Some("2026-08-23T08:00:00.000Z")
-        );
         assert_eq!(active.columns[0].cards[0].open_follow_up_count, 1);
         assert!(!active.columns.iter().any(|column| column.status == "WON"));
+
+        let overdue = service
+            .board(PipelineBoardRequest {
+                follow_up_mode: Some("OVERDUE".to_string()),
+                now_utc: Some("2026-08-24T07:00:00.000Z".to_string()),
+                ..PipelineBoardRequest::default()
+            })
+            .await
+            .expect("load overdue board");
+        assert_eq!(overdue.visible_total, 1);
+        assert_eq!(overdue.columns[0].cards[0].id, "pipeline-new");
+
+        let due_today = service
+            .board(PipelineBoardRequest {
+                follow_up_mode: Some("TODAY".to_string()),
+                now_utc: Some("2026-08-24T07:00:00.000Z".to_string()),
+                tomorrow_start_utc: Some("2026-08-24T21:00:00.000Z".to_string()),
+                ..PipelineBoardRequest::default()
+            })
+            .await
+            .expect("load today board");
+        assert_eq!(due_today.visible_total, 1);
+        assert_eq!(
+            due_today
+                .columns
+                .iter()
+                .find(|column| column.status == "CONTACTED")
+                .expect("contacted column")
+                .cards[0]
+                .id,
+            "pipeline-contacted"
+        );
 
         let with_terminal = service
             .board(PipelineBoardRequest {

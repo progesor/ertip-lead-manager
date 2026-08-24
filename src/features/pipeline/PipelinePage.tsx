@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type {
   CommandError,
   LeadFilterOptions,
@@ -8,7 +8,7 @@ import type {
   ProductCode,
 } from "../leads/types";
 import "./pipeline.css";
-import type { PipelineBoardResponse } from "./types";
+import type { PipelineBoardResponse, PipelineCard } from "./types";
 
 const statusLabels: Record<LeadStatus, string> = {
   NEW: "Yeni",
@@ -20,8 +20,6 @@ const statusLabels: Record<LeadStatus, string> = {
   LOST: "Kaybedildi",
   INVALID: "Geçersiz",
 };
-
-const statusOptions = Object.entries(statusLabels) as Array<[LeadStatus, string]>;
 
 const productLabels: Record<ProductCode, string> = {
   FUE_MICROMOTOR_SYSTEMS: "FUE Micromotor",
@@ -35,8 +33,17 @@ const productLabels: Record<ProductCode, string> = {
 
 const productOptions = Object.entries(productLabels) as Array<[ProductCode, string]>;
 const regionNames = new Intl.DisplayNames(["tr"], { type: "region" });
-
 const emptyFilters: LeadFilterOptions = { countries: [] };
+const DRAG_THRESHOLD_PX = 7;
+
+interface CardPointerDrag {
+  pointerId: number;
+  contactId: string;
+  sourceStatus: LeadStatus;
+  startX: number;
+  startY: number;
+  moved: boolean;
+}
 
 function formatDate(value: string | null) {
   if (!value) return "—";
@@ -107,6 +114,13 @@ function clean(value: string) {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function pipelineStatusAtPoint(x: number, y: number): LeadStatus | null {
+  const target = document.elementFromPoint(x, y);
+  const column = target?.closest<HTMLElement>("[data-pipeline-status]");
+  const status = column?.dataset.pipelineStatus as LeadStatus | undefined;
+  return status && status in statusLabels ? status : null;
+}
+
 function moveCardLocally(
   board: PipelineBoardResponse,
   contactId: string,
@@ -154,6 +168,9 @@ function moveCardLocally(
 }
 
 export function PipelinePage() {
+  const navigate = useNavigate();
+  const pointerDragRef = useRef<CardPointerDrag | null>(null);
+  const suppressClickRef = useRef(false);
   const [board, setBoard] = useState<PipelineBoardResponse | null>(null);
   const [filterOptions, setFilterOptions] = useState<LeadFilterOptions>(emptyFilters);
   const [search, setSearch] = useState("");
@@ -165,7 +182,7 @@ export function PipelinePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [dragging, setDragging] = useState<{ id: string; status: LeadStatus } | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<LeadStatus | null>(null);
   const [mutatingId, setMutatingId] = useState<string | null>(null);
 
@@ -216,7 +233,9 @@ export function PipelinePage() {
 
   async function changeStatus(contactId: string, targetStatus: LeadStatus) {
     if (!board || mutatingId) return;
-    const sourceCard = board.columns.flatMap((column) => column.cards).find((card) => card.id === contactId);
+    const sourceCard = board.columns
+      .flatMap((column) => column.cards)
+      .find((card) => card.id === contactId);
     if (!sourceCard || sourceCard.status === targetStatus) return;
 
     const snapshot = board;
@@ -237,9 +256,93 @@ export function PipelinePage() {
       setError(`${sourceCard.displayName} taşınamadı. ${commandErrorMessage(mutationError)}`);
     } finally {
       setMutatingId(null);
-      setDragging(null);
+      setDraggingId(null);
       setDragOverStatus(null);
     }
+  }
+
+  function beginCardPointerDrag(
+    event: React.PointerEvent<HTMLButtonElement>,
+    card: PipelineCard,
+  ) {
+    if (event.button !== 0 || mutatingId !== null) return;
+
+    pointerDragRef.current = {
+      pointerId: event.pointerId,
+      contactId: card.id,
+      sourceStatus: card.status,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function moveCardPointer(event: React.PointerEvent<HTMLButtonElement>) {
+    const drag = pointerDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    if (!drag.moved) {
+      const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+      if (distance < DRAG_THRESHOLD_PX) return;
+      drag.moved = true;
+      suppressClickRef.current = true;
+      setDraggingId(drag.contactId);
+    }
+
+    event.preventDefault();
+    const targetStatus = pipelineStatusAtPoint(event.clientX, event.clientY);
+    setDragOverStatus(
+      targetStatus && targetStatus !== drag.sourceStatus ? targetStatus : null,
+    );
+  }
+
+  function endCardPointer(event: React.PointerEvent<HTMLButtonElement>) {
+    const drag = pointerDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    const targetStatus = drag.moved
+      ? pipelineStatusAtPoint(event.clientX, event.clientY)
+      : null;
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    pointerDragRef.current = null;
+    setDraggingId(null);
+    setDragOverStatus(null);
+
+    if (!drag.moved) return;
+
+    event.preventDefault();
+    if (targetStatus && targetStatus !== drag.sourceStatus) {
+      void changeStatus(drag.contactId, targetStatus);
+    }
+
+    window.setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 0);
+  }
+
+  function cancelCardPointer(event: React.PointerEvent<HTMLButtonElement>) {
+    const drag = pointerDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    pointerDragRef.current = null;
+    suppressClickRef.current = true;
+    setDraggingId(null);
+    setDragOverStatus(null);
+    window.setTimeout(() => {
+      suppressClickRef.current = false;
+    }, 0);
+  }
+
+  function openLead(event: React.MouseEvent<HTMLButtonElement>, contactId: string) {
+    if (suppressClickRef.current) {
+      event.preventDefault();
+      suppressClickRef.current = false;
+      return;
+    }
+    navigate(`/leads/${contactId}`);
   }
 
   function clearFilters() {
@@ -258,7 +361,7 @@ export function PipelinePage() {
         <div>
           <div className="eyebrow">LIFECYCLE</div>
           <h1>Pipeline</h1>
-          <p>Leadleri satış aşamalarında gör, sürükle veya kart üzerindeki durum seçicisiyle taşı.</p>
+          <p>Karta tıklayarak detayı aç; kartın herhangi bir yerinden sürükleyerek aşamasını değiştir.</p>
         </div>
         <div className="pipeline-total">
           <strong>{board?.visibleTotal ?? 0}</strong>
@@ -325,7 +428,11 @@ export function PipelinePage() {
           >
             Kazanıldı / Kaybedildi göster
           </button>
-          {hasFilters ? <button type="button" className="is-clear" onClick={clearFilters}>Filtreleri Temizle</button> : null}
+          {hasFilters ? (
+            <button type="button" className="is-clear" onClick={clearFilters}>
+              Filtreleri Temizle
+            </button>
+          ) : null}
         </div>
       </article>
 
@@ -336,17 +443,7 @@ export function PipelinePage() {
               className={`pipeline-column ${dragOverStatus === column.status ? "is-drag-over" : ""}`}
               key={column.status}
               aria-label={`${statusLabels[column.status]} pipeline kolonu`}
-              onDragOver={(event) => {
-                event.preventDefault();
-                if (dragging && dragging.status !== column.status) setDragOverStatus(column.status);
-              }}
-              onDragLeave={() => {
-                if (dragOverStatus === column.status) setDragOverStatus(null);
-              }}
-              onDrop={(event) => {
-                event.preventDefault();
-                if (dragging) void changeStatus(dragging.id, column.status);
-              }}
+              data-pipeline-status={column.status}
             >
               <header className="pipeline-column-heading">
                 <div>
@@ -358,28 +455,23 @@ export function PipelinePage() {
 
               <div className="pipeline-card-list">
                 {column.cards.map((card) => (
-                  <article className={`pipeline-card ${mutatingId === card.id ? "is-mutating" : ""}`} key={card.id}>
+                  <button
+                    type="button"
+                    className={`pipeline-card ${mutatingId === card.id ? "is-mutating" : ""} ${draggingId === card.id ? "is-dragging" : ""}`}
+                    key={card.id}
+                    disabled={mutatingId !== null}
+                    title="Tıkla: lead detayı · Sürükle: aşamayı değiştir"
+                    onPointerDown={(event) => beginCardPointerDrag(event, card)}
+                    onPointerMove={moveCardPointer}
+                    onPointerUp={endCardPointer}
+                    onPointerCancel={cancelCardPointer}
+                    onClick={(event) => openLead(event, card.id)}
+                  >
                     <div className="pipeline-card-topline">
-                      <button
-                        type="button"
-                        className="pipeline-drag-handle"
-                        aria-label={`${card.displayName} leadini sürükle`}
-                        draggable={mutatingId === null}
-                        title="Sürükleyerek başka aşamaya taşı"
-                        onDragStart={(event) => {
-                          event.dataTransfer.effectAllowed = "move";
-                          event.dataTransfer.setData("text/plain", card.id);
-                          setDragging({ id: card.id, status: card.status });
-                        }}
-                        onDragEnd={() => {
-                          setDragging(null);
-                          setDragOverStatus(null);
-                        }}
-                      >
-                        ⋮⋮
-                      </button>
-                      <Link to={`/leads/${card.id}`}>{card.displayName}</Link>
-                      {card.isRepeat ? <span className="pipeline-repeat">Repeat ×{card.submissionCount}</span> : null}
+                      <span className="pipeline-card-name">{card.displayName}</span>
+                      {card.isRepeat ? (
+                        <span className="pipeline-repeat">Repeat ×{card.submissionCount}</span>
+                      ) : null}
                     </div>
 
                     <div className="pipeline-card-contact">
@@ -401,29 +493,20 @@ export function PipelinePage() {
                       {card.platforms.map((platform) => (
                         <span className="lead-platform-chip" key={platform}>{platformLabel(platform)}</span>
                       ))}
-                      {card.warningCount > 0 ? <span className="pipeline-warning">⚠ {card.warningCount}</span> : null}
+                      {card.warningCount > 0 ? (
+                        <span className="pipeline-warning">⚠ {card.warningCount}</span>
+                      ) : null}
                     </div>
 
                     {card.nextFollowUpAt ? (
                       <div className={`pipeline-follow-up pipeline-follow-up-${followUpKind(card.nextFollowUpAt)}`}>
                         <span>{followUpLabel(card.nextFollowUpAt)}</span>
-                        {card.openFollowUpCount > 1 ? <strong>+{card.openFollowUpCount - 1}</strong> : null}
+                        {card.openFollowUpCount > 1 ? (
+                          <strong>+{card.openFollowUpCount - 1}</strong>
+                        ) : null}
                       </div>
                     ) : null}
-
-                    <label className="pipeline-card-status">
-                      <span>Durum</span>
-                      <select
-                        value={card.status}
-                        disabled={mutatingId !== null}
-                        onChange={(event) => void changeStatus(card.id, event.target.value as LeadStatus)}
-                      >
-                        {statusOptions.map(([value, label]) => (
-                          <option value={value} key={value}>{label}</option>
-                        ))}
-                      </select>
-                    </label>
-                  </article>
+                  </button>
                 ))}
 
                 {!loading && column.cards.length === 0 ? (

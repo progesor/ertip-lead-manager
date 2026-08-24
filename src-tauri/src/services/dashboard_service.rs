@@ -33,6 +33,7 @@ pub struct DashboardAttentionLead {
     pub id: String,
     pub display_name: String,
     pub status: String,
+    pub primary_phone: Option<String>,
     pub country_code: Option<String>,
     pub latest_submission_at: Option<String>,
     pub due_at: Option<String>,
@@ -62,6 +63,7 @@ struct LeadRow {
     id: String,
     display_name: Option<String>,
     status: String,
+    primary_phone: Option<String>,
     country_code: Option<String>,
     latest_submission_at: Option<String>,
     due_at: Option<String>,
@@ -97,24 +99,17 @@ impl DashboardService {
             .unwrap_or(DEFAULT_GROUP_LIMIT)
             .clamp(1, MAX_GROUP_LIMIT) as i64;
 
-        let kpis = self.kpis().await?;
-        let new_uncontacted = self.new_uncontacted(limit).await?;
-        let due_today = self
-            .follow_up_group(&today_start, &tomorrow_start, None, limit)
-            .await?;
-        let overdue = self
-            .follow_up_group("", "", Some(&now), limit)
-            .await?;
-        let recent_repeats = self.recent_repeats(&recent_since, limit).await?;
-        let open_quality_issues = self.open_quality_issues(limit).await?;
-
         Ok(DashboardAttentionResponse {
-            kpis,
-            new_uncontacted,
-            due_today,
-            overdue,
-            recent_repeats,
-            open_quality_issues,
+            kpis: self.kpis().await?,
+            new_uncontacted: self.new_uncontacted(limit).await?,
+            due_today: self
+                .follow_up_group(&today_start, &tomorrow_start, None, limit)
+                .await?,
+            overdue: self
+                .follow_up_group("", "", Some(&now), limit)
+                .await?,
+            recent_repeats: self.recent_repeats(&recent_since, limit).await?,
+            open_quality_issues: self.open_quality_issues(limit).await?,
         })
     }
 
@@ -145,7 +140,7 @@ impl DashboardService {
             .await?;
         let rows = sqlx::query_as::<_, LeadRow>(
             r#"
-            SELECT id, display_name, status, country_code, latest_submission_at,
+            SELECT id, display_name, status, primary_phone, country_code, latest_submission_at,
                    NULL AS due_at, 1 AS count
             FROM lead_contacts
             WHERE status = 'NEW'
@@ -175,12 +170,13 @@ impl DashboardService {
             .await?;
             let rows = sqlx::query_as::<_, LeadRow>(
                 r#"
-                SELECT c.id, c.display_name, c.status, c.country_code, c.latest_submission_at,
-                       MIN(f.due_at) AS due_at, COUNT(*) AS count
+                SELECT c.id, c.display_name, c.status, c.primary_phone, c.country_code,
+                       c.latest_submission_at, MIN(f.due_at) AS due_at, COUNT(*) AS count
                 FROM follow_ups f
                 JOIN lead_contacts c ON c.id = f.lead_contact_id
                 WHERE f.status = 'OPEN' AND f.due_at < ?
-                GROUP BY c.id, c.display_name, c.status, c.country_code, c.latest_submission_at
+                GROUP BY c.id, c.display_name, c.status, c.primary_phone, c.country_code,
+                         c.latest_submission_at
                 ORDER BY MIN(f.due_at) ASC, c.id ASC
                 LIMIT ?
                 "#,
@@ -200,12 +196,13 @@ impl DashboardService {
             .await?;
             let rows = sqlx::query_as::<_, LeadRow>(
                 r#"
-                SELECT c.id, c.display_name, c.status, c.country_code, c.latest_submission_at,
-                       MIN(f.due_at) AS due_at, COUNT(*) AS count
+                SELECT c.id, c.display_name, c.status, c.primary_phone, c.country_code,
+                       c.latest_submission_at, MIN(f.due_at) AS due_at, COUNT(*) AS count
                 FROM follow_ups f
                 JOIN lead_contacts c ON c.id = f.lead_contact_id
                 WHERE f.status = 'OPEN' AND f.due_at >= ? AND f.due_at < ?
-                GROUP BY c.id, c.display_name, c.status, c.country_code, c.latest_submission_at
+                GROUP BY c.id, c.display_name, c.status, c.primary_phone, c.country_code,
+                         c.latest_submission_at
                 ORDER BY MIN(f.due_at) ASC, c.id ASC
                 LIMIT ?
                 "#,
@@ -233,7 +230,7 @@ impl DashboardService {
         .await?;
         let rows = sqlx::query_as::<_, LeadRow>(
             r#"
-            SELECT id, display_name, status, country_code, latest_submission_at,
+            SELECT id, display_name, status, primary_phone, country_code, latest_submission_at,
                    NULL AS due_at, submission_count AS count
             FROM lead_contacts
             WHERE submission_count > 1 AND latest_submission_at >= ?
@@ -256,12 +253,13 @@ impl DashboardService {
         .await?;
         let rows = sqlx::query_as::<_, LeadRow>(
             r#"
-            SELECT c.id, c.display_name, c.status, c.country_code, c.latest_submission_at,
-                   NULL AS due_at, COUNT(*) AS count
+            SELECT c.id, c.display_name, c.status, c.primary_phone, c.country_code,
+                   c.latest_submission_at, NULL AS due_at, COUNT(*) AS count
             FROM lead_data_quality_issues q
             JOIN lead_contacts c ON c.id = q.lead_contact_id
             WHERE q.status = 'OPEN'
-            GROUP BY c.id, c.display_name, c.status, c.country_code, c.latest_submission_at
+            GROUP BY c.id, c.display_name, c.status, c.primary_phone, c.country_code,
+                     c.latest_submission_at
             ORDER BY COUNT(*) DESC, c.latest_submission_at DESC, c.id ASC
             LIMIT ?
             "#,
@@ -293,6 +291,7 @@ fn group(total: i64, rows: Vec<LeadRow>) -> DashboardAttentionGroup {
                     .filter(|value| !value.trim().is_empty())
                     .unwrap_or_else(|| "İsimsiz lead".to_string()),
                 status: row.status,
+                primary_phone: row.primary_phone,
                 country_code: row.country_code,
                 latest_submission_at: row.latest_submission_at,
                 due_at: row.due_at,
@@ -308,17 +307,30 @@ mod tests {
     use crate::db::Database;
 
     #[tokio::test]
-    async fn attention_groups_use_local_day_boundaries_supplied_as_utc() {
+    async fn attention_groups_use_supplied_local_day_boundaries_and_include_phone() {
         let database = Database::connect_memory().await.expect("open database");
-        for (id, status, submissions, latest) in [
-            ("dash-new", "NEW", 1_i64, "2026-08-22T08:00:00.000Z"),
-            ("dash-repeat", "CONTACTED", 2_i64, "2026-08-22T09:00:00.000Z"),
+        for (id, status, submissions, latest, phone) in [
+            (
+                "dash-new",
+                "NEW",
+                1_i64,
+                "2026-08-22T08:00:00.000Z",
+                "+905551111111",
+            ),
+            (
+                "dash-repeat",
+                "CONTACTED",
+                2_i64,
+                "2026-08-22T09:00:00.000Z",
+                "+905552222222",
+            ),
         ] {
             sqlx::query(
-                "INSERT INTO lead_contacts (id, display_name, status, created_at, updated_at, latest_submission_at, submission_count) VALUES (?, ?, ?, '2026-08-20T00:00:00.000Z', '2026-08-20T00:00:00.000Z', ?, ?)",
+                "INSERT INTO lead_contacts (id, display_name, primary_phone, status, created_at, updated_at, latest_submission_at, submission_count) VALUES (?, ?, ?, ?, '2026-08-20T00:00:00.000Z', '2026-08-20T00:00:00.000Z', ?, ?)",
             )
             .bind(id)
             .bind(id)
+            .bind(phone)
             .bind(status)
             .bind(latest)
             .bind(submissions)
@@ -352,7 +364,7 @@ mod tests {
         let response = DashboardService::new(database.pool().clone())
             .attention(DashboardAttentionRequest {
                 now_utc: "2026-08-22T09:47:00.000Z".to_string(),
-                today_start_utc: "2026-08-21T21:00:00.000Z".to_string(),
+                today_start_utc: "2026-08-22T09:47:00.000Z".to_string(),
                 tomorrow_start_utc: "2026-08-22T21:00:00.000Z".to_string(),
                 recent_repeat_since_utc: "2026-08-15T09:47:00.000Z".to_string(),
                 group_limit: Some(6),
@@ -363,8 +375,12 @@ mod tests {
         assert_eq!(response.kpis.total_contacts, 2);
         assert_eq!(response.new_uncontacted.total, 1);
         assert_eq!(response.overdue.total, 1);
-        assert_eq!(response.due_today.total, 2);
+        assert_eq!(response.due_today.total, 1);
         assert_eq!(response.recent_repeats.total, 1);
         assert_eq!(response.open_quality_issues.total, 1);
+        assert_eq!(
+            response.new_uncontacted.items[0].primary_phone.as_deref(),
+            Some("+905551111111")
+        );
     }
 }

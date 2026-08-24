@@ -92,6 +92,9 @@ impl LeadWorkspaceService {
             product_code: clean_optional(request.product_code),
             repeat_only: request.repeat_only.unwrap_or(false),
             warning_only: request.warning_only.unwrap_or(false),
+            follow_up_due_from: None,
+            follow_up_due_to: None,
+            follow_up_due_before: None,
         };
 
         let query = LeadListQuery {
@@ -180,18 +183,18 @@ mod tests {
 
     #[test]
     fn request_helpers_are_deterministic() {
-        assert_eq!(clean_optional(Some("  TR ".into())), Some("TR".into()));
-        assert_eq!(clean_optional(Some("   ".into())), None);
-        assert_eq!(parse_sort(Some("NAME_ASC")), LeadListSort::NameAsc);
-        assert_eq!(parse_sort(Some("unknown")), LeadListSort::LatestDesc);
+        assert_eq!(clean_optional(Some("  PT  ".to_string())).as_deref(), Some("PT"));
+        assert_eq!(clean_optional(Some("   ".to_string())), None);
+        assert_eq!(parse_sort(Some("NAME_DESC")), LeadListSort::NameDesc);
+        assert_eq!(parse_sort(Some("unexpected")), LeadListSort::LatestDesc);
     }
 
     #[test]
     fn warning_types_are_grouped_with_counts() {
         let summaries = summarize_warnings(vec![
-            "UNKNOWN_PRODUCT".into(),
-            "INVALID_PHONE".into(),
-            "UNKNOWN_PRODUCT".into(),
+            "UNKNOWN_PRODUCT".to_string(),
+            "INVALID_PHONE".to_string(),
+            "UNKNOWN_PRODUCT".to_string(),
         ]);
 
         assert_eq!(summaries.len(), 2);

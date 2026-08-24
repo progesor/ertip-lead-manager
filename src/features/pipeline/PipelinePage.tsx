@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import type {
   CommandError,
   LeadFilterOptions,
@@ -8,6 +8,7 @@ import type {
   ProductCode,
 } from "../leads/types";
 import "./pipeline.css";
+import "./pipeline-drag-preview.css";
 import type { PipelineBoardResponse, PipelineCard } from "./types";
 
 const statusLabels: Record<LeadStatus, string> = {
@@ -36,13 +37,37 @@ const regionNames = new Intl.DisplayNames(["tr"], { type: "region" });
 const emptyFilters: LeadFilterOptions = { countries: [] };
 const DRAG_THRESHOLD_PX = 7;
 
+interface PipelineRestoreState {
+  search: string;
+  country: string;
+  product: ProductCode | "";
+  repeatOnly: boolean;
+  warningOnly: boolean;
+  includeTerminal: boolean;
+}
+
+interface PipelineRouteState {
+  restorePipeline?: PipelineRestoreState;
+}
+
 interface CardPointerDrag {
   pointerId: number;
   contactId: string;
   sourceStatus: LeadStatus;
   startX: number;
   startY: number;
+  offsetX: number;
+  offsetY: number;
+  width: number;
+  card: PipelineCard;
   moved: boolean;
+}
+
+interface DragPreview {
+  card: PipelineCard;
+  x: number;
+  y: number;
+  width: number;
 }
 
 function formatDate(value: string | null) {
@@ -167,23 +192,78 @@ function moveCardLocally(
   };
 }
 
+function PipelineCardBody({ card }: { card: PipelineCard }) {
+  return (
+    <>
+      <div className="pipeline-card-topline">
+        <span className="pipeline-card-name">{card.displayName}</span>
+        {card.isRepeat ? (
+          <span className="pipeline-repeat">Repeat ×{card.submissionCount}</span>
+        ) : null}
+      </div>
+
+      <div className="pipeline-card-contact">
+        {card.primaryEmail ?? card.primaryPhone ?? "İletişim bilgisi yok"}
+      </div>
+
+      <div className="pipeline-card-meta">
+        <span>{formatCountry(card.countryCode)}</span>
+        <span>{formatDate(card.latestSubmissionAt)}</span>
+      </div>
+
+      <div className="pipeline-card-chips">
+        {card.productInterests.slice(0, 2).map((code) => (
+          <span className="lead-product-chip" key={code}>{productLabels[code]}</span>
+        ))}
+        {card.productInterests.length > 2 ? (
+          <span className="pipeline-more-chip">+{card.productInterests.length - 2}</span>
+        ) : null}
+        {card.platforms.map((platform) => (
+          <span className="lead-platform-chip" key={platform}>{platformLabel(platform)}</span>
+        ))}
+        {card.warningCount > 0 ? (
+          <span className="pipeline-warning">⚠ {card.warningCount}</span>
+        ) : null}
+      </div>
+
+      {card.nextFollowUpAt ? (
+        <div className={`pipeline-follow-up pipeline-follow-up-${followUpKind(card.nextFollowUpAt)}`}>
+          <span>{followUpLabel(card.nextFollowUpAt)}</span>
+          {card.openFollowUpCount > 1 ? (
+            <strong>+{card.openFollowUpCount - 1}</strong>
+          ) : null}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 export function PipelinePage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const initialStateRef = useRef<PipelineRestoreState | undefined>(
+    (location.state as PipelineRouteState | null)?.restorePipeline,
+  );
   const pointerDragRef = useRef<CardPointerDrag | null>(null);
   const suppressClickRef = useRef(false);
   const [board, setBoard] = useState<PipelineBoardResponse | null>(null);
   const [filterOptions, setFilterOptions] = useState<LeadFilterOptions>(emptyFilters);
-  const [search, setSearch] = useState("");
-  const [country, setCountry] = useState("");
-  const [product, setProduct] = useState<ProductCode | "">("");
-  const [repeatOnly, setRepeatOnly] = useState(false);
-  const [warningOnly, setWarningOnly] = useState(false);
-  const [includeTerminal, setIncludeTerminal] = useState(false);
+  const [search, setSearch] = useState(initialStateRef.current?.search ?? "");
+  const [country, setCountry] = useState(initialStateRef.current?.country ?? "");
+  const [product, setProduct] = useState<ProductCode | "">(
+    initialStateRef.current?.product ?? "",
+  );
+  const [repeatOnly, setRepeatOnly] = useState(initialStateRef.current?.repeatOnly ?? false);
+  const [warningOnly, setWarningOnly] = useState(initialStateRef.current?.warningOnly ?? false);
+  const [includeTerminal, setIncludeTerminal] = useState(
+    initialStateRef.current?.includeTerminal ?? false,
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<LeadStatus | null>(null);
+  const [dragPreview, setDragPreview] = useState<DragPreview | null>(null);
   const [mutatingId, setMutatingId] = useState<string | null>(null);
 
   const countryOptions = useMemo(
@@ -258,6 +338,7 @@ export function PipelinePage() {
       setMutatingId(null);
       setDraggingId(null);
       setDragOverStatus(null);
+      setDragPreview(null);
     }
   }
 
@@ -267,12 +348,17 @@ export function PipelinePage() {
   ) {
     if (event.button !== 0 || mutatingId !== null) return;
 
+    const bounds = event.currentTarget.getBoundingClientRect();
     pointerDragRef.current = {
       pointerId: event.pointerId,
       contactId: card.id,
       sourceStatus: card.status,
       startX: event.clientX,
       startY: event.clientY,
+      offsetX: event.clientX - bounds.left,
+      offsetY: event.clientY - bounds.top,
+      width: bounds.width,
+      card,
       moved: false,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -291,6 +377,13 @@ export function PipelinePage() {
     }
 
     event.preventDefault();
+    setDragPreview({
+      card: drag.card,
+      x: event.clientX - drag.offsetX,
+      y: event.clientY - drag.offsetY,
+      width: drag.width,
+    });
+
     const targetStatus = pipelineStatusAtPoint(event.clientX, event.clientY);
     setDragOverStatus(
       targetStatus && targetStatus !== drag.sourceStatus ? targetStatus : null,
@@ -311,6 +404,7 @@ export function PipelinePage() {
     pointerDragRef.current = null;
     setDraggingId(null);
     setDragOverStatus(null);
+    setDragPreview(null);
 
     if (!drag.moved) return;
 
@@ -331,6 +425,7 @@ export function PipelinePage() {
     suppressClickRef.current = true;
     setDraggingId(null);
     setDragOverStatus(null);
+    setDragPreview(null);
     window.setTimeout(() => {
       suppressClickRef.current = false;
     }, 0);
@@ -342,7 +437,23 @@ export function PipelinePage() {
       suppressClickRef.current = false;
       return;
     }
-    navigate(`/leads/${contactId}`);
+
+    navigate(`/leads/${contactId}`, {
+      state: {
+        returnTo: "/pipeline",
+        returnLabel: "Pipeline'a Dön",
+        returnState: {
+          restorePipeline: {
+            search,
+            country,
+            product,
+            repeatOnly,
+            warningOnly,
+            includeTerminal,
+          } satisfies PipelineRestoreState,
+        },
+      },
+    });
   }
 
   function clearFilters() {
@@ -361,7 +472,7 @@ export function PipelinePage() {
         <div>
           <div className="eyebrow">LIFECYCLE</div>
           <h1>Pipeline</h1>
-          <p>Karta tıklayarak detayı aç; kartın herhangi bir yerinden sürükleyerek aşamasını değiştir.</p>
+          <p>Karta tıklayarak detayı aç; kartı tutup sürüklediğinde fareyle birlikte hareket eder.</p>
         </div>
         <div className="pipeline-total">
           <strong>{board?.visibleTotal ?? 0}</strong>
@@ -467,45 +578,7 @@ export function PipelinePage() {
                     onPointerCancel={cancelCardPointer}
                     onClick={(event) => openLead(event, card.id)}
                   >
-                    <div className="pipeline-card-topline">
-                      <span className="pipeline-card-name">{card.displayName}</span>
-                      {card.isRepeat ? (
-                        <span className="pipeline-repeat">Repeat ×{card.submissionCount}</span>
-                      ) : null}
-                    </div>
-
-                    <div className="pipeline-card-contact">
-                      {card.primaryEmail ?? card.primaryPhone ?? "İletişim bilgisi yok"}
-                    </div>
-
-                    <div className="pipeline-card-meta">
-                      <span>{formatCountry(card.countryCode)}</span>
-                      <span>{formatDate(card.latestSubmissionAt)}</span>
-                    </div>
-
-                    <div className="pipeline-card-chips">
-                      {card.productInterests.slice(0, 2).map((code) => (
-                        <span className="lead-product-chip" key={code}>{productLabels[code]}</span>
-                      ))}
-                      {card.productInterests.length > 2 ? (
-                        <span className="pipeline-more-chip">+{card.productInterests.length - 2}</span>
-                      ) : null}
-                      {card.platforms.map((platform) => (
-                        <span className="lead-platform-chip" key={platform}>{platformLabel(platform)}</span>
-                      ))}
-                      {card.warningCount > 0 ? (
-                        <span className="pipeline-warning">⚠ {card.warningCount}</span>
-                      ) : null}
-                    </div>
-
-                    {card.nextFollowUpAt ? (
-                      <div className={`pipeline-follow-up pipeline-follow-up-${followUpKind(card.nextFollowUpAt)}`}>
-                        <span>{followUpLabel(card.nextFollowUpAt)}</span>
-                        {card.openFollowUpCount > 1 ? (
-                          <strong>+{card.openFollowUpCount - 1}</strong>
-                        ) : null}
-                      </div>
-                    ) : null}
+                    <PipelineCardBody card={card} />
                   </button>
                 ))}
 
@@ -525,6 +598,21 @@ export function PipelinePage() {
 
         {loading && !board ? <div className="pipeline-loading">Pipeline yükleniyor…</div> : null}
       </div>
+
+      {dragPreview ? (
+        <div
+          className="pipeline-drag-preview"
+          aria-hidden="true"
+          style={{
+            width: dragPreview.width,
+            transform: `translate3d(${dragPreview.x}px, ${dragPreview.y}px, 0)`,
+          }}
+        >
+          <div className="pipeline-card pipeline-drag-preview-card">
+            <PipelineCardBody card={dragPreview.card} />
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

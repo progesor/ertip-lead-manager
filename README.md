@@ -1,8 +1,8 @@
 # Ertip Lead Manager
 
-Windows-first, local-first lead management and analytics application for Meta lead exports used by Ertip Medical.
+Windows-first lead management and analytics application for Meta lead exports used by Ertip Medical.
 
-> Status: **M4 — Pipeline and Follow-ups complete.** M0–M4 are complete; PR #8 is ready for squash merge to `main`.
+> Status: **M5 Analytics + M5.5 Team Assignment in active development**. M0–M4 are complete and merged to `main`.
 
 ## Product summary
 
@@ -18,12 +18,11 @@ The application is intentionally organized around this daily-use hierarchy:
 Current capabilities include:
 
 - real SQLite-backed Dashboard KPIs and attention queues;
-- phone + country prioritized in daily Dashboard/Kanban customer context;
 - pointer-based full-card Kanban drag/drop with floating preview and audited status changes;
 - Kanban search/country/product/repeat/warning plus due-today/overdue quick filters;
 - follow-up create/reschedule/complete/cancel with canonical UTC persistence;
 - context-aware navigation between Dashboard/Kanban and Lead Detail;
-- production Lead Detail layout with a 2/3 operational workspace and 1/3 sticky tabbed activity/submission/source panel;
+- production Lead Detail layout with a 2/3 operational workspace and 1/3 sticky tabbed history/source panel;
 - CRM lifecycle status changes and immutable activity audit;
 - editable CRM notes;
 - manual contact-level product-interest corrections stored separately from imported source data;
@@ -31,11 +30,11 @@ Current capabilities include:
 - real SQLite-backed Lead list with search/filter/sort/pagination;
 - dynamic country filtering with Turkish country names;
 - platform, repeat and data-quality indicators;
-- persistent Light / Dark theme with system-default first run and application-wide contrast/readability pass;
 - 10k-contact / 25k-submission workspace smoke coverage;
-- Windows CI coverage for frontend, Rust and NSIS packaging.
+- M5 analytics development: explicit submission/contact/repeat metrics, trends, funnel and acquisition breakdowns;
+- M5.5 local personnel groundwork: stable staff IDs, lead assignment, Kanban assignee visibility/filtering and audit-ready actor fields.
 
-V1 deliberately does **not** connect to Google Sheets, Meta APIs, WhatsApp APIs, cloud databases, or multi-user authentication. Core workflows remain usable offline.
+The original local-first SQLite mode remains the development/fallback runtime. The planned multi-user release architecture is a private PostgreSQL database behind an authenticated backend API on Coolify; Tauri and the future Web App will use the same API rather than connecting directly to PostgreSQL. See `docs/development/M5_5_TEAM_MULTIUSER.md`.
 
 ## Canonical documents
 

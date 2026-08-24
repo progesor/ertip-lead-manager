@@ -19,6 +19,8 @@ pub struct PipelineBoardRequest {
     pub search: Option<String>,
     pub country_code: Option<String>,
     pub product_code: Option<String>,
+    pub assigned_user_id: Option<String>,
+    pub unassigned_only: Option<bool>,
     pub repeat_only: Option<bool>,
     pub warning_only: Option<bool>,
     pub include_terminal: Option<bool>,
@@ -37,6 +39,9 @@ pub struct PipelineCard {
     pub primary_phone: Option<String>,
     pub country_code: Option<String>,
     pub status: String,
+    pub assigned_user_id: Option<String>,
+    pub assigned_user_name: Option<String>,
+    pub assigned_user_active: Option<bool>,
     pub latest_submission_at: Option<String>,
     pub submission_count: i64,
     pub is_repeat: bool,
@@ -93,6 +98,8 @@ impl PipelineService {
             country_code: clean_optional(request.country_code)
                 .map(|value| value.to_ascii_uppercase()),
             product_code: clean_optional(request.product_code),
+            assigned_user_id: clean_optional(request.assigned_user_id),
+            unassigned_only: request.unassigned_only.unwrap_or(false),
             repeat_only: request.repeat_only.unwrap_or(false),
             warning_only: request.warning_only.unwrap_or(false),
             follow_up_due_from,
@@ -138,6 +145,9 @@ impl PipelineService {
                         primary_phone: record.primary_phone,
                         country_code: record.country_code,
                         status: record.status,
+                        assigned_user_id: record.assigned_user_id,
+                        assigned_user_name: record.assigned_user_name,
+                        assigned_user_active: record.assigned_user_active,
                         latest_submission_at: record.latest_submission_at,
                         submission_count: record.submission_count,
                         is_repeat: record.submission_count > 1,
@@ -236,21 +246,29 @@ mod tests {
     use crate::db::Database;
 
     #[tokio::test]
-    async fn pipeline_groups_contacts_and_filters_follow_up_attention_windows() {
+    async fn pipeline_groups_contacts_and_filters_follow_up_and_assignee() {
         let database = Database::connect_memory().await.expect("open database");
         let now = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
 
-        for (id, name, status) in [
-            ("pipeline-new", "New Lead", "NEW"),
-            ("pipeline-contacted", "Contacted Lead", "CONTACTED"),
-            ("pipeline-won", "Won Lead", "WON"),
+        sqlx::query("INSERT INTO app_users (id, display_name, role, is_active, created_at, updated_at) VALUES ('sales-a', 'Ayşe Sales', 'SALES', 1, ?, ?)")
+            .bind(&now)
+            .bind(&now)
+            .execute(database.pool())
+            .await
+            .expect("seed staff");
+
+        for (id, name, status, assigned_user_id) in [
+            ("pipeline-new", "New Lead", "NEW", Some("sales-a")),
+            ("pipeline-contacted", "Contacted Lead", "CONTACTED", None),
+            ("pipeline-won", "Won Lead", "WON", None),
         ] {
             sqlx::query(
-                "INSERT INTO lead_contacts (id, display_name, status, created_at, updated_at, latest_submission_at, submission_count) VALUES (?, ?, ?, ?, ?, ?, 1)",
+                "INSERT INTO lead_contacts (id, display_name, status, assigned_user_id, created_at, updated_at, latest_submission_at, submission_count) VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
             )
             .bind(id)
             .bind(name)
             .bind(status)
+            .bind(assigned_user_id)
             .bind(&now)
             .bind(&now)
             .bind(&now)
@@ -278,8 +296,38 @@ mod tests {
         assert_eq!(active.visible_total, 2);
         assert_eq!(active.columns[0].status, "NEW");
         assert_eq!(active.columns[0].cards[0].id, "pipeline-new");
+        assert_eq!(active.columns[0].cards[0].assigned_user_name.as_deref(), Some("Ayşe Sales"));
         assert_eq!(active.columns[0].cards[0].open_follow_up_count, 1);
         assert!(!active.columns.iter().any(|column| column.status == "WON"));
+
+        let assigned = service
+            .board(PipelineBoardRequest {
+                assigned_user_id: Some("sales-a".to_string()),
+                ..PipelineBoardRequest::default()
+            })
+            .await
+            .expect("filter assigned board");
+        assert_eq!(assigned.visible_total, 1);
+        assert_eq!(assigned.columns[0].cards[0].id, "pipeline-new");
+
+        let unassigned = service
+            .board(PipelineBoardRequest {
+                unassigned_only: Some(true),
+                ..PipelineBoardRequest::default()
+            })
+            .await
+            .expect("filter unassigned board");
+        assert_eq!(unassigned.visible_total, 1);
+        assert_eq!(
+            unassigned
+                .columns
+                .iter()
+                .find(|column| column.status == "CONTACTED")
+                .expect("contacted column")
+                .cards[0]
+                .id,
+            "pipeline-contacted"
+        );
 
         let overdue = service
             .board(PipelineBoardRequest {

@@ -40,6 +40,7 @@ const activityLabels: Record<string, string> = {
   FOLLOW_UP_RESCHEDULED: "Takip yeniden zamanlandı",
   FOLLOW_UP_COMPLETED: "Takip tamamlandı",
   FOLLOW_UP_CANCELLED: "Takip iptal edildi",
+  ASSIGNEE_CHANGED: "Sorumlu personel değiştirildi",
 };
 
 type HistoryTab = "activity" | "submissions" | "source";
@@ -80,6 +81,8 @@ function activityDetail(activity: LeadDetailActivity) {
       included?: boolean;
       dueAt?: string;
       previousDueAt?: string;
+      fromDisplayName?: string | null;
+      toDisplayName?: string | null;
     };
 
     if (activity.activityType === "STATUS_CHANGED" && payload.fromStatus && payload.toStatus) {
@@ -89,6 +92,10 @@ function activityDetail(activity: LeadDetailActivity) {
     if (activity.activityType === "PRODUCT_INTEREST_CHANGED" && payload.productCode) {
       const label = productLabels[payload.productCode] ?? payload.productCode;
       return `${label} · ${payload.included ? "eklendi" : "kaldırıldı"}`;
+    }
+
+    if (activity.activityType === "ASSIGNEE_CHANGED") {
+      return `${payload.fromDisplayName ?? "Atanmamış"} → ${payload.toDisplayName ?? "Atanmamış"}`;
     }
 
     if (payload.dueAt && activity.activityType.startsWith("FOLLOW_UP_")) {
@@ -157,6 +164,9 @@ export function LeadHistoryPanel({ detail }: { detail: LeadDetailResponse }) {
                     <div>
                       <strong>{activityLabels[activity.activityType] ?? activity.activityType}</strong>
                       {detailText ? <em>{detailText}</em> : null}
+                      {activity.actorDisplayName ? (
+                        <small className="lead-history-actor">İşlemi yapan: {activity.actorDisplayName}</small>
+                      ) : null}
                       <span>{formatDate(activity.occurredAt)}</span>
                     </div>
                   </div>
@@ -221,6 +231,7 @@ export function LeadHistoryPanel({ detail }: { detail: LeadDetailResponse }) {
         {activeTab === "source" ? (
           <div className="lead-history-source">
             <SourceLine label="Contact ID" value={detail.contact.id} mono />
+            <SourceLine label="Sorumlu" value={detail.contact.assignee?.displayName ?? "Atanmamış"} />
             <SourceLine label="Oluşturuldu" value={formatDate(detail.contact.createdAt)} />
             <SourceLine label="Son güncelleme" value={formatDate(detail.contact.updatedAt)} />
             <SourceLine label="Son lead" value={formatDate(detail.contact.latestSubmissionAt)} />

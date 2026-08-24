@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { TeamSettingsPanel } from "../team/TeamSettingsPanel";
 import { loadAppDiagnostics } from "../../lib/tauri/diagnostics";
 import type { AppDiagnostics } from "../../types/diagnostics";
 
@@ -32,9 +33,11 @@ export function SettingsPage() {
         <div>
           <div className="eyebrow">SYSTEM</div>
           <h1>Ayarlar</h1>
-          <p>Yerel veri yolu ve şema bilgisi geliştirme/operasyon tanılaması için görünür tutulur.</p>
+          <p>Ekip, yerel veri yolu ve sistem çalışma bilgilerini yönetin.</p>
         </div>
       </div>
+
+      <TeamSettingsPanel />
 
       <article className="panel diagnostics-panel">
         <div className="panel-heading">

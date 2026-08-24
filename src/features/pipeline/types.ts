@@ -7,6 +7,9 @@ export interface PipelineCard {
   primaryPhone: string | null;
   countryCode: string | null;
   status: LeadStatus;
+  assignedUserId: string | null;
+  assignedUserName: string | null;
+  assignedUserActive: boolean | null;
   latestSubmissionAt: string | null;
   submissionCount: number;
   isRepeat: boolean;

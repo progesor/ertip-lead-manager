@@ -1,3 +1,5 @@
+import type { LeadAssignee } from "../team/types";
+
 export type LeadStatus =
   | "NEW"
   | "CONTACTED"
@@ -85,6 +87,7 @@ export interface LeadDetailContact {
   primaryPhone: string | null;
   countryCode: string | null;
   status: LeadStatus;
+  assignee: LeadAssignee | null;
   createdAt: string;
   updatedAt: string;
   latestSubmissionAt: string | null;
@@ -143,6 +146,8 @@ export interface LeadDetailActivity {
   activityType: string;
   occurredAt: string;
   payloadJson: string;
+  actorUserId: string | null;
+  actorDisplayName: string | null;
 }
 
 export interface LeadDetailResponse {

@@ -17,6 +17,8 @@ pub struct LeadListFilters {
     pub status: Option<String>,
     pub country_code: Option<String>,
     pub product_code: Option<String>,
+    pub assigned_user_id: Option<String>,
+    pub unassigned_only: bool,
     pub repeat_only: bool,
     pub warning_only: bool,
     pub follow_up_due_from: Option<String>,
@@ -40,6 +42,9 @@ pub struct LeadListRecord {
     pub primary_phone: Option<String>,
     pub country_code: Option<String>,
     pub status: String,
+    pub assigned_user_id: Option<String>,
+    pub assigned_user_name: Option<String>,
+    pub assigned_user_active: Option<bool>,
     pub latest_submission_at: Option<String>,
     pub submission_count: i64,
     pub product_codes: Vec<String>,
@@ -70,6 +75,9 @@ impl LeadWorkspaceRepository {
                 c.primary_phone,
                 c.country_code,
                 c.status,
+                c.assigned_user_id,
+                assigned.display_name AS assigned_user_name,
+                assigned.is_active AS assigned_user_active,
                 c.latest_submission_at,
                 c.submission_count,
                 COALESCE((
@@ -113,6 +121,7 @@ impl LeadWorkspaceRepository {
                       AND q.status = 'OPEN'
                 ), '') AS warning_types
             FROM lead_contacts c
+            LEFT JOIN app_users assigned ON assigned.id = c.assigned_user_id
             "#,
         );
 
@@ -137,6 +146,9 @@ impl LeadWorkspaceRepository {
                     primary_phone: row.get("primary_phone"),
                     country_code: row.get("country_code"),
                     status: row.get("status"),
+                    assigned_user_id: row.get("assigned_user_id"),
+                    assigned_user_name: row.get("assigned_user_name"),
+                    assigned_user_active: row.get("assigned_user_active"),
                     latest_submission_at: row.get("latest_submission_at"),
                     submission_count: row.get("submission_count"),
                     product_codes: effective_product_interests(
@@ -237,6 +249,19 @@ fn append_filters(builder: &mut QueryBuilder<'_, Sqlite>, filters: &LeadListFilt
         builder
             .push(" AND c.country_code = ")
             .push_bind(country_code.to_ascii_uppercase());
+    }
+
+    if filters.unassigned_only {
+        builder.push(" AND c.assigned_user_id IS NULL");
+    } else if let Some(user_id) = filters
+        .assigned_user_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        builder
+            .push(" AND c.assigned_user_id = ")
+            .push_bind(user_id.to_string());
     }
 
     if let Some(product_code) = filters

@@ -90,6 +90,8 @@ impl LeadWorkspaceService {
             status: clean_optional(request.status),
             country_code: clean_optional(request.country_code).map(|value| value.to_ascii_uppercase()),
             product_code: clean_optional(request.product_code),
+            assigned_user_id: None,
+            unassigned_only: false,
             repeat_only: request.repeat_only.unwrap_or(false),
             warning_only: request.warning_only.unwrap_or(false),
             follow_up_due_from: None,

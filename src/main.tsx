@@ -9,6 +9,7 @@ import "./styles.css";
 import "./theme.css";
 import "./readability-patch.css";
 import "./dark-mode-polish.css";
+import "./features/team/team.css";
 
 const storedTheme = window.localStorage.getItem("ertip-lead-manager-theme");
 const initialTheme =

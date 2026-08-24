@@ -2,8 +2,8 @@ import { NavLink, Outlet } from "react-router-dom";
 
 const navigation = [
   { to: "/", label: "Genel Bakış", short: "GB", end: true },
-  { to: "/leads", label: "Leadler", short: "LD" },
   { to: "/pipeline", label: "Pipeline", short: "PL" },
+  { to: "/leads", label: "Leadler", short: "LD" },
   { to: "/analytics", label: "Analiz", short: "AN" },
   { to: "/imports", label: "İçe Aktarımlar", short: "IA" },
   { to: "/settings", label: "Ayarlar", short: "AY" },

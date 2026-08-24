@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, SqlitePool};
 
 use crate::error::AppError;
+use crate::repositories::analytics_repository::AnalyticsRepository;
 
 const DEFAULT_GROUP_LIMIT: u32 = 6;
 const MAX_GROUP_LIMIT: u32 = 20;
@@ -14,6 +15,7 @@ pub struct DashboardAttentionRequest {
     pub today_start_utc: String,
     pub tomorrow_start_utc: String,
     pub recent_repeat_since_utc: String,
+    pub analytics_since_utc: String,
     pub group_limit: Option<u32>,
 }
 
@@ -24,6 +26,15 @@ pub struct DashboardKpis {
     pub new_contacts: i64,
     pub qualified_contacts: i64,
     pub quote_sent_contacts: i64,
+    pub won_contacts: i64,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct DashboardAnalyticsSummary {
+    pub submissions: i64,
+    pub unique_contacts: i64,
+    pub repeat_submissions: i64,
     pub won_contacts: i64,
 }
 
@@ -51,6 +62,7 @@ pub struct DashboardAttentionGroup {
 #[serde(rename_all = "camelCase")]
 pub struct DashboardAttentionResponse {
     pub kpis: DashboardKpis,
+    pub analytics_30d: DashboardAnalyticsSummary,
     pub new_uncontacted: DashboardAttentionGroup,
     pub due_today: DashboardAttentionGroup,
     pub overdue: DashboardAttentionGroup,
@@ -88,9 +100,15 @@ impl DashboardService {
         let today_start = canonical_utc(&request.today_start_utc, "todayStartUtc")?;
         let tomorrow_start = canonical_utc(&request.tomorrow_start_utc, "tomorrowStartUtc")?;
         let recent_since = canonical_utc(&request.recent_repeat_since_utc, "recentRepeatSinceUtc")?;
+        let analytics_since = canonical_utc(&request.analytics_since_utc, "analyticsSinceUtc")?;
         if today_start >= tomorrow_start {
             return Err(AppError::Validation(
                 "todayStartUtc must be before tomorrowStartUtc".to_string(),
+            ));
+        }
+        if analytics_since >= now {
+            return Err(AppError::Validation(
+                "analyticsSinceUtc must be before nowUtc".to_string(),
             ));
         }
 
@@ -101,6 +119,7 @@ impl DashboardService {
 
         Ok(DashboardAttentionResponse {
             kpis: self.kpis().await?,
+            analytics_30d: self.analytics_summary(&analytics_since, &now).await?,
             new_uncontacted: self.new_uncontacted(limit).await?,
             due_today: self
                 .follow_up_group(&today_start, &tomorrow_start, None, limit)
@@ -110,6 +129,28 @@ impl DashboardService {
                 .await?,
             recent_repeats: self.recent_repeats(&recent_since, limit).await?,
             open_quality_issues: self.open_quality_issues(limit).await?,
+        })
+    }
+
+    async fn analytics_summary(
+        &self,
+        from_utc: &str,
+        to_utc: &str,
+    ) -> Result<DashboardAnalyticsSummary, AppError> {
+        let repository = AnalyticsRepository::new(self.pool.clone());
+        let summary = repository.summary(Some(from_utc), Some(to_utc)).await?;
+        let statuses = repository.current_statuses(Some(from_utc), Some(to_utc)).await?;
+        let won_contacts = statuses
+            .into_iter()
+            .find(|item| item.status == "WON")
+            .map(|item| item.contacts)
+            .unwrap_or(0);
+
+        Ok(DashboardAnalyticsSummary {
+            submissions: summary.submissions,
+            unique_contacts: summary.unique_contacts,
+            repeat_submissions: summary.repeat_submissions,
+            won_contacts,
         })
     }
 
@@ -310,56 +351,37 @@ mod tests {
     async fn attention_groups_use_supplied_local_day_boundaries_and_include_phone() {
         let database = Database::connect_memory().await.expect("open database");
         for (id, status, submissions, latest, phone) in [
-            (
-                "dash-new",
-                "NEW",
-                1_i64,
-                "2026-08-22T08:00:00.000Z",
-                "+905551111111",
-            ),
-            (
-                "dash-repeat",
-                "CONTACTED",
-                2_i64,
-                "2026-08-22T09:00:00.000Z",
-                "+905552222222",
-            ),
+            ("dash-new", "NEW", 1_i64, "2026-08-22T08:00:00.000Z", "+905551111111"),
+            ("dash-repeat", "CONTACTED", 2_i64, "2026-08-22T09:00:00.000Z", "+905552222222"),
         ] {
             sqlx::query(
-                "INSERT INTO lead_contacts (id, display_name, primary_phone, status, created_at, updated_at, latest_submission_at, submission_count) VALUES (?, ?, ?, ?, '2026-08-20T00:00:00.000Z', '2026-08-20T00:00:00.000Z', ?, ?)",
+                "INSERT INTO lead_contacts (id, display_name, primary_phone, status, created_at, updated_at, latest_submission_at, submission_count) VALUES (?, ?, ?, ?, '2026-08-20T00:00:00.000Z', '2026-08-20T00:00:00.000Z', ?, ?)"
             )
-            .bind(id)
-            .bind(id)
-            .bind(phone)
-            .bind(status)
-            .bind(latest)
-            .bind(submissions)
-            .execute(database.pool())
-            .await
-            .expect("seed dashboard contact");
+            .bind(id).bind(id).bind(phone).bind(status).bind(latest).bind(submissions)
+            .execute(database.pool()).await.expect("seed dashboard contact");
+        }
+
+        sqlx::query("INSERT INTO import_batches (id, file_name, sheet_name, started_at, completed_at, status, total_rows, app_version) VALUES ('dash-batch', 'fixture.csv', 'CSV', '2026-08-20T00:00:00.000Z', '2026-08-20T00:00:00.000Z', 'COMMITTED', 2, '0.1.0')")
+            .execute(database.pool()).await.expect("seed dashboard batch");
+        for (id, contact, timestamp) in [
+            ("dash-sub-1", "dash-new", "2026-08-22T08:00:00.000Z"),
+            ("dash-sub-2", "dash-repeat", "2026-08-22T09:00:00.000Z"),
+        ] {
+            sqlx::query("INSERT INTO lead_submissions (id, lead_contact_id, import_batch_id, external_lead_id, source_created_at_utc, source_created_at_raw, raw_payload_json, created_at) VALUES (?, ?, 'dash-batch', ?, ?, ?, '{}', ?)")
+                .bind(id).bind(contact).bind(format!("l:{id}")).bind(timestamp).bind(timestamp).bind(timestamp)
+                .execute(database.pool()).await.expect("seed dashboard submission");
         }
 
         for (id, contact, due) in [
             ("dash-overdue", "dash-new", "2026-08-22T08:30:00.000Z"),
             ("dash-today", "dash-repeat", "2026-08-22T12:00:00.000Z"),
         ] {
-            sqlx::query(
-                "INSERT INTO follow_ups (id, lead_contact_id, due_at, status, created_at) VALUES (?, ?, ?, 'OPEN', '2026-08-20T00:00:00.000Z')",
-            )
-            .bind(id)
-            .bind(contact)
-            .bind(due)
-            .execute(database.pool())
-            .await
-            .expect("seed follow-up");
+            sqlx::query("INSERT INTO follow_ups (id, lead_contact_id, due_at, status, created_at) VALUES (?, ?, ?, 'OPEN', '2026-08-20T00:00:00.000Z')")
+                .bind(id).bind(contact).bind(due).execute(database.pool()).await.expect("seed follow-up");
         }
 
-        sqlx::query(
-            "INSERT INTO lead_data_quality_issues (id, lead_contact_id, issue_type, severity, status, created_at) VALUES ('dash-warning', 'dash-new', 'UNKNOWN_PRODUCT', 'WARNING', 'OPEN', '2026-08-20T00:00:00.000Z')",
-        )
-        .execute(database.pool())
-        .await
-        .expect("seed warning");
+        sqlx::query("INSERT INTO lead_data_quality_issues (id, lead_contact_id, issue_type, severity, status, created_at) VALUES ('dash-warning', 'dash-new', 'UNKNOWN_PRODUCT', 'WARNING', 'OPEN', '2026-08-20T00:00:00.000Z')")
+            .execute(database.pool()).await.expect("seed warning");
 
         let response = DashboardService::new(database.pool().clone())
             .attention(DashboardAttentionRequest {
@@ -367,20 +389,20 @@ mod tests {
                 today_start_utc: "2026-08-22T09:47:00.000Z".to_string(),
                 tomorrow_start_utc: "2026-08-22T21:00:00.000Z".to_string(),
                 recent_repeat_since_utc: "2026-08-15T09:47:00.000Z".to_string(),
+                analytics_since_utc: "2026-07-24T09:47:00.000Z".to_string(),
                 group_limit: Some(6),
             })
             .await
             .expect("load dashboard attention");
 
         assert_eq!(response.kpis.total_contacts, 2);
+        assert_eq!(response.analytics_30d.submissions, 2);
+        assert_eq!(response.analytics_30d.unique_contacts, 2);
         assert_eq!(response.new_uncontacted.total, 1);
         assert_eq!(response.overdue.total, 1);
         assert_eq!(response.due_today.total, 1);
         assert_eq!(response.recent_repeats.total, 1);
         assert_eq!(response.open_quality_issues.total, 1);
-        assert_eq!(
-            response.new_uncontacted.items[0].primary_phone.as_deref(),
-            Some("+905551111111")
-        );
+        assert_eq!(response.new_uncontacted.items[0].primary_phone.as_deref(), Some("+905551111111"));
     }
 }

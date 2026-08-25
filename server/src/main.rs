@@ -6,6 +6,7 @@ use std::error::Error;
 
 use app::{AppState, build_pool, router};
 use config::Config;
+use db::run_migrations;
 use tokio::net::TcpListener;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
@@ -23,6 +24,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
 
     let pool = build_pool(&config.database_url, config.db_max_connections)?;
+
+    info!("applying PostgreSQL migrations");
+    run_migrations(&pool).await?;
+    info!("PostgreSQL migrations are current");
+
     let listener = TcpListener::bind(config.bind_addr).await?;
 
     info!(

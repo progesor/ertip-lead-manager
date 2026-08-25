@@ -412,7 +412,7 @@ async fn ensure_lead_scope(
     let sql = if lock_for_update {
         "SELECT assigned_user_id, revision FROM lead_contacts WHERE id = $1 FOR UPDATE"
     } else {
-        "SELECT assigned_user_id, revision FROM lead_contacts WHERE id = $1"
+        "SELECT assigned_user_id, revision FROM lead_contacts WHERE id = $1 FOR SHARE"
     };
     let row = sqlx::query(sql)
         .bind(contact_id)

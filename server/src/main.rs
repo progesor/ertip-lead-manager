@@ -5,6 +5,7 @@ mod config;
 mod crm;
 mod crm_mutations;
 mod db;
+mod followups;
 
 use std::error::Error;
 

@@ -23,6 +23,10 @@ use crate::{
         AssignmentRequest, ChangeLeadStatusRequest, CreateStaffRequest, CrmError, CrmService,
         LeadListRequest, SetStaffActiveRequest, UpdateStaffRequest,
     },
+    crm_mutations::{
+        CreateLeadNoteRequest, CrmMutationService, DeleteLeadNoteQuery, ProductInterestRequest,
+        UpdateLeadNoteRequest,
+    },
 };
 
 const SESSION_COOKIE_NAME: &str = "elm_session";
@@ -215,6 +219,18 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/v1/leads/{contact_id}/status",
             patch(change_lead_status),
+        )
+        .route(
+            "/api/v1/leads/{contact_id}/notes",
+            post(create_lead_note),
+        )
+        .route(
+            "/api/v1/leads/{contact_id}/notes/{note_id}",
+            patch(update_lead_note).delete(delete_lead_note),
+        )
+        .route(
+            "/api/v1/leads/{contact_id}/product-interests/{product_code}",
+            put(set_product_interest),
         )
         .with_state(state)
         .layer(PropagateRequestIdLayer::new(request_id_header.clone()))
@@ -419,6 +435,58 @@ async fn change_lead_status(
     Ok(Json(result).into_response())
 }
 
+async fn create_lead_note(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(contact_id): Path<String>,
+    Json(request): Json<CreateLeadNoteRequest>,
+) -> Result<Response, ApiHttpError> {
+    let actor = authenticated_actor(&state, &headers).await?;
+    let note = crm_mutation_service(&state)
+        .create_note(&actor, &contact_id, request)
+        .await?;
+    Ok((StatusCode::CREATED, Json(note)).into_response())
+}
+
+async fn update_lead_note(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((contact_id, note_id)): Path<(String, String)>,
+    Json(request): Json<UpdateLeadNoteRequest>,
+) -> Result<Response, ApiHttpError> {
+    let actor = authenticated_actor(&state, &headers).await?;
+    let result = crm_mutation_service(&state)
+        .update_note(&actor, &contact_id, &note_id, request)
+        .await?;
+    Ok(Json(result).into_response())
+}
+
+async fn delete_lead_note(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((contact_id, note_id)): Path<(String, String)>,
+    Query(query): Query<DeleteLeadNoteQuery>,
+) -> Result<Response, ApiHttpError> {
+    let actor = authenticated_actor(&state, &headers).await?;
+    let result = crm_mutation_service(&state)
+        .delete_note(&actor, &contact_id, &note_id, query.expected_revision)
+        .await?;
+    Ok(Json(result).into_response())
+}
+
+async fn set_product_interest(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((contact_id, product_code)): Path<(String, String)>,
+    Json(request): Json<ProductInterestRequest>,
+) -> Result<Response, ApiHttpError> {
+    let actor = authenticated_actor(&state, &headers).await?;
+    let result = crm_mutation_service(&state)
+        .set_product_interest(&actor, &contact_id, &product_code, request)
+        .await?;
+    Ok(Json(result).into_response())
+}
+
 async fn authenticated_actor(
     state: &AppState,
     headers: &HeaderMap,
@@ -435,6 +503,10 @@ fn auth_service(state: &AppState) -> AuthService {
 
 fn crm_service(state: &AppState) -> CrmService {
     CrmService::new(state.pool.clone())
+}
+
+fn crm_mutation_service(state: &AppState) -> CrmMutationService {
+    CrmMutationService::new(state.pool.clone())
 }
 
 fn session_cookie(token: &str, ttl_hours: i64) -> Result<HeaderValue, ApiHttpError> {

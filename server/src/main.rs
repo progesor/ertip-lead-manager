@@ -17,7 +17,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         Ok(config) => config,
         Err(config_error) => {
             error!(error = %config_error, "server configuration is invalid");
-            return Err(Box::new(config_error));
+            return Err(Box::<dyn Error>::from(config_error));
         }
     };
 

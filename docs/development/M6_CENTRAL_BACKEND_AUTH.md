@@ -70,8 +70,10 @@ Current server policy:
 | Read assigned own leads | Yes | Yes | Yes |
 | Assign/unassign leads | Yes | Yes | No |
 | Change lead status | Yes | Yes | Assigned own leads only |
+| Create/update/delete notes | Yes | Yes | Assigned own leads only |
+| Change product interests | Yes | Yes | Assigned own leads only |
 
-`SALES` lead visibility is enforced by PostgreSQL query scope, not only by frontend filtering. Attempting to request unassigned leads or another person's assignee filter is forbidden. Detail/status access outside the salesperson's assignment scope does not disclose another lead.
+`SALES` lead visibility and edit scope are enforced by PostgreSQL-backed server services, not only frontend filtering. Attempting to request unassigned leads or another person's assignee filter is forbidden. Detail/mutation access outside the salesperson's assignment scope does not disclose another lead.
 
 The current ADMIN is prevented from demoting or deactivating its own account through the personnel API.
 
@@ -87,15 +89,19 @@ These rules survive SQLite → PostgreSQL:
 - status, notes, product overrides, follow-ups and assignment mutations create auditable activity.
 - authenticated audit actor comes from server session, never request JSON.
 
-The implemented assignment and lead-status endpoints already persist `ASSIGNEE_CHANGED` / `STATUS_CHANGED` activities with the authenticated actor ID.
+Implemented mutations persist `ASSIGNEE_CHANGED`, `STATUS_CHANGED`, `NOTE_CREATED`, `NOTE_UPDATED`, `NOTE_DELETED` and `PRODUCT_INTEREST_CHANGED` with the authenticated actor ID.
+
+Manual product-interest decisions remain append-only. The latest override is applied over the automatic submission-derived product set, matching the proven local behavior.
 
 ## Concurrency implementation
 
 Centralized mutable CRM state uses persisted `revision` values.
 
-Current personnel update/deactivation, lead assignment and lead-status mutation contracts carry `expectedRevision`. Writes are checked against the current persisted revision and successful changes increment it. A stale request receives HTTP `409` with `STALE_REVISION` instead of overwriting a newer update.
+Current personnel update/deactivation, lead assignment, lead-status and product-interest mutation contracts carry `expectedRevision`. Writes are checked against the current persisted revision and successful aggregate changes increment it. Notes use their own `lead_notes.revision` for update/delete. A stale request receives HTTP `409` with `STALE_REVISION` instead of overwriting a newer update.
 
-This pattern must be applied to the remaining mutable CRM resources as their API slices are implemented.
+Scoped note writes hold a shared lock on the contact row for the duration of the mutation. Assignment/product aggregate writes use an update lock. This closes the authorization race where a SALES user could otherwise pass an assignment check immediately before another transaction reassigns the lead.
+
+This revision/locking pattern must be applied to the remaining mutable CRM resources as their API slices are implemented.
 
 ## M6 slices
 
@@ -135,18 +141,18 @@ This pattern must be applied to the remaining mutable CRM resources as their API
 
 ### M6.4 — CRM API parity
 
-Implemented first slice:
+Implemented slices:
 
 - [x] personnel read/create/update/activation endpoints;
 - [x] lead assignment/unassignment endpoint;
 - [x] lead list with search/status/country/product/assignee/repeat/warning filters and paging;
 - [x] lead detail with source submissions, effective products, quality issues, notes and activity history;
 - [x] lead status endpoint;
-- [x] server-derived audit actor for assignment/status;
+- [x] note create/update/delete API;
+- [x] product-interest override API with append-only decisions;
+- [x] server-derived audit actor for implemented mutations;
 - [x] optimistic revision conflict handling for the implemented mutable resources;
-- [x] SALES assigned-only query/detail/status scope;
-- [ ] note create/update/delete API;
-- [ ] product-interest override API;
+- [x] SALES assigned-only query/detail/mutation scope;
 - [ ] follow-up API;
 - [ ] pipeline + Dashboard API;
 - [ ] analytics API;
@@ -156,15 +162,19 @@ Implemented first slice:
 Current HTTP routes:
 
 ```text
-GET   /api/v1/personnel
-POST  /api/v1/personnel
-PATCH /api/v1/personnel/{userId}
-PATCH /api/v1/personnel/{userId}/active
+GET    /api/v1/personnel
+POST   /api/v1/personnel
+PATCH  /api/v1/personnel/{userId}
+PATCH  /api/v1/personnel/{userId}/active
 
-GET   /api/v1/leads
-GET   /api/v1/leads/{contactId}
-PUT   /api/v1/leads/{contactId}/assignment
-PATCH /api/v1/leads/{contactId}/status
+GET    /api/v1/leads
+GET    /api/v1/leads/{contactId}
+PUT    /api/v1/leads/{contactId}/assignment
+PATCH  /api/v1/leads/{contactId}/status
+POST   /api/v1/leads/{contactId}/notes
+PATCH  /api/v1/leads/{contactId}/notes/{noteId}
+DELETE /api/v1/leads/{contactId}/notes/{noteId}?expectedRevision={revision}
+PUT    /api/v1/leads/{contactId}/product-interests/{productCode}
 ```
 
 Handlers remain thin: they resolve the authenticated actor and delegate authorization/business/persistence behavior to server service code. Database rows are not treated as external API contracts.
@@ -215,7 +225,9 @@ The following have passed the GitHub CI PostgreSQL 17 lane during M6 development
 - Argon2/session bootstrap-login-resolve-logout integration;
 - RBAC policy unit tests;
 - PostgreSQL CRM integration covering SALES scope, MANAGER assignment, authenticated status audit and stale revision rejection;
+- PostgreSQL note/product mutation integration covering create/update/delete, append-only product decisions, audit actor, SALES scoping and stale revisions;
 - authenticated HTTP route compilation/tests;
+- contact-row lock strategy used by scoped note/product mutations;
 - existing frontend checks and frozen local Tauri Rust tests remain separate gates.
 
-M6 remains open. The next controlled API slice is notes + product-interest overrides, followed by follow-ups and then pipeline/dashboard/analytics/import parity before migration tooling and production deployment closure.
+M6 remains open. The next controlled API slice is follow-ups, followed by pipeline/dashboard/analytics/import parity, credential provisioning, backup operations and migration/reconciliation tooling before production deployment closure.

@@ -43,7 +43,7 @@ At startup the server:
 4. performs first-ADMIN bootstrap only when the user table is empty and bootstrap configuration is present;
 5. starts the HTTP listener.
 
-## Health/API endpoints
+## Health and authentication endpoints
 
 ```text
 GET  /health/live
@@ -81,9 +81,68 @@ Only the SHA-256 hash of the session token is stored server-side.
 
 `POST /api/v1/auth/login/web` uses the same credentials but returns the session through a `Secure; HttpOnly; SameSite=Lax` cookie. The token is not included in the JSON body.
 
-`GET /api/v1/me` and logout accept either the Tauri bearer token or the Web session cookie.
+`GET /api/v1/me`, CRM endpoints and logout accept either the Tauri bearer token or the Web session cookie. Passwords are stored only as Argon2id hashes. Five failed password attempts trigger a temporary database-backed account lock.
 
-Passwords are stored only as Argon2id hashes. Five failed password attempts trigger a temporary database-backed account lock.
+## CRM API — current M6 slice
+
+All CRM endpoints below require an authenticated session. `actor_user_id` is derived from that session and is never accepted as trusted request input.
+
+```text
+GET   /api/v1/personnel?includeInactive=false
+POST  /api/v1/personnel
+PATCH /api/v1/personnel/{userId}
+PATCH /api/v1/personnel/{userId}/active
+
+GET   /api/v1/leads
+GET   /api/v1/leads/{contactId}
+PUT   /api/v1/leads/{contactId}/assignment
+PATCH /api/v1/leads/{contactId}/status
+```
+
+### Authorization policy
+
+- `ADMIN`: all current personnel and CRM operations.
+- `MANAGER`: may read personnel, read all leads, assign/unassign leads and change lead status; cannot create/update/deactivate personnel.
+- `SALES`: may read only leads currently assigned to their own user ID and may change status only on those leads. They cannot browse other/unassigned leads, manage personnel or reassign leads.
+
+A `SALES` caller requesting another assignee or the unassigned-only list is rejected server-side. Lead detail outside the caller's assignment scope returns not found so the API does not disclose the existence of another salesperson's lead.
+
+### Optimistic concurrency
+
+Mutable personnel, assignment and lead-status requests carry an `expectedRevision` value obtained from the latest API response. Successful writes increment the persisted revision. A stale write returns:
+
+```text
+HTTP 409
+error.code = STALE_REVISION
+```
+
+This prevents a second client from silently overwriting a newer CRM change.
+
+Example assignment body:
+
+```json
+{
+  "assignedUserId": "user-uuid-or-stable-id",
+  "expectedRevision": 3
+}
+```
+
+Use `null` for `assignedUserId` to unassign a lead.
+
+Example status body:
+
+```json
+{
+  "status": "CONTACTED",
+  "expectedRevision": 4
+}
+```
+
+Current stable lead statuses remain `NEW`, `CONTACTED`, `REPLIED`, `QUALIFIED`, `QUOTE_SENT`, `WON`, `LOST`, `INVALID`.
+
+### Personnel authentication state
+
+Creating a personnel record in the current CRM slice creates the stable `app_users` identity but does not automatically issue a password. Personnel responses expose `authEnabled` so an ADMIN can distinguish a CRM identity from a credential-enabled login identity. Credential provisioning/invitation for additional users remains a later M6 authentication slice; the first ADMIN is still created through the one-time bootstrap contract above.
 
 ## Docker / Coolify
 
@@ -108,4 +167,4 @@ Do not expose PostgreSQL credentials to Tauri/Web clients.
 
 ## Current M6 boundary
 
-The server foundation, canonical PostgreSQL schema and first server-side session authentication slice are under active validation. CRM endpoints and SQLite→PostgreSQL migration tooling follow in later M6 slices. The frozen local Tauri build remains independent until M7 switches the Windows production client to the API.
+The server foundation, PostgreSQL schema, server-side session authentication, RBAC policy and first PostgreSQL-backed CRM API slice (personnel, assignment, lead list/detail/status) are implemented and covered by the PostgreSQL 17 CI lane. Notes/product interests, follow-ups, pipeline/dashboard/analytics, manual import parity, additional-user credential provisioning, backup/restore operations and SQLite→PostgreSQL migration/reconciliation remain in M6. The frozen local Tauri build remains independent until M7 switches the Windows production client to the API.

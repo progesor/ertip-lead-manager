@@ -3,6 +3,7 @@ FROM rust:bookworm AS builder
 WORKDIR /build
 
 COPY server/Cargo.toml ./Cargo.toml
+COPY server/migrations ./migrations
 COPY server/src ./src
 
 RUN cargo build --release

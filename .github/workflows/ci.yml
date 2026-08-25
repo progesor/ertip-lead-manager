@@ -44,15 +44,31 @@ jobs:
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
   server:
-    name: Server tests (Linux)
+    name: Server tests (Linux + PostgreSQL 17)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: elm
+          POSTGRES_PASSWORD: elm
+          POSTGRES_DB: elm_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U elm -d elm_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ELM_TEST_DATABASE_URL: postgres://elm:elm@localhost:5432/elm_test
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: server
-      - name: Server cargo tests
+      - name: Server cargo tests and PostgreSQL migration gate
         run: cargo test --manifest-path server/Cargo.toml
 
   server-container:

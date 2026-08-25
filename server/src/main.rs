@@ -3,6 +3,7 @@ mod auth;
 mod authz;
 mod config;
 mod crm;
+mod crm_mutations;
 mod db;
 
 use std::error::Error;

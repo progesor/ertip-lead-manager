@@ -11,7 +11,7 @@ RUN cargo build --release
 FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --uid 10001 appuser
 
@@ -23,6 +23,9 @@ ENV ELM_BIND_ADDR=0.0.0.0:8080
 ENV RUST_LOG=info,ertip_lead_manager_server=info,tower_http=info
 
 EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+    CMD curl --fail --silent --show-error http://127.0.0.1:8080/health/ready || exit 1
 
 USER appuser
 

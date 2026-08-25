@@ -1,151 +1,230 @@
 # 03 — System Architecture
 
-## 1. Architecture style
+## 1. Architecture state
 
-A local desktop application with a thin React presentation layer and a Rust domain/application backend inside Tauri.
+Ertip Lead Manager now has two deliberately separated architecture states:
+
+1. **Frozen local fallback** — the accepted `v0.1.0-local` Tauri + SQLite application.
+2. **Target centralized production architecture** — Tauri/Web clients using one authenticated HTTPS API backed by private PostgreSQL.
+
+The local fallback is preserved; M6 does not mutate it into a half-online hybrid.
+
+## 2. Frozen local architecture
 
 ```text
-┌──────────────────────────────────────────────┐
-│               React / TypeScript             │
-│                                              │
-│ Dashboard | Leads | Pipeline | Analytics     │
-│ Imports   | Settings | Detail Workspace      │
-└──────────────────────┬───────────────────────┘
-                       │ typed Tauri commands/events
-┌──────────────────────▼───────────────────────┐
-│                  Rust backend                │
-│                                              │
-│ Import Service                               │
-│ Lead Service                                 │
-│ Follow-up Service                            │
-│ Analytics Service                            │
-│ Backup Service                               │
-│ Domain normalization / identity rules        │
-└───────────────┬─────────────────────┬────────┘
-                │                     │
-         ┌──────▼──────┐      ┌──────▼────────────────────┐
-         │   SQLite    │      │ Manual file source adapters│
-         │    SQLx     │      │ XLSX / Calamine            │
-         └─────────────┘      │ CSV / rust-csv             │
-                              └─────────────────────────────┘
+React / TypeScript
+        │ typed Tauri commands
+        ▼
+Rust application/domain services
+        │
+        ├── SQLite / SQLx
+        └── XLSX / CSV source adapters
 ```
 
-## 2. Layer responsibilities
+This remains the fallback/development/migration-reference implementation and is frozen at schema version 4.
 
-### Frontend
+## 3. Centralized target architecture
+
+```text
+┌─────────────────────────┐        ┌─────────────────────────┐
+│ Windows Tauri Client    │        │ Future Web Client       │
+│ React + TypeScript      │        │ React + TypeScript      │
+└────────────┬────────────┘        └────────────┬────────────┘
+             │ HTTPS /api/v1                    │ HTTPS /api/v1
+             └────────────────┬──────────────────┘
+                              ▼
+                 ┌────────────────────────────┐
+                 │ Rust Axum API/Auth Server  │
+                 │                            │
+                 │ HTTP handlers              │
+                 │ auth/session context       │
+                 │ authorization policy       │
+                 │ application/domain services│
+                 │ repository interfaces      │
+                 └──────────────┬─────────────┘
+                                │ SQLx
+                                ▼
+                 ┌────────────────────────────┐
+                 │ PostgreSQL                 │
+                 │ Coolify private network    │
+                 └────────────────────────────┘
+```
+
+Clients never receive PostgreSQL credentials.
+
+## 4. Layer responsibilities
+
+### Client presentation layer
 
 Responsible for:
 
 - presentation and interaction;
 - UI state;
 - query/filter controls;
-- client-side form validation for immediate feedback;
-- invoking typed backend commands;
-- rendering data returned from backend.
+- immediate client-side validation;
+- session-aware navigation;
+- invoking typed API contracts;
+- rendering server-returned data and explicit conflict/auth/network states.
 
 Not responsible for:
 
 - deciding duplicate/repeat identity;
-- writing raw SQL;
-- parsing XLSX or CSV;
-- enforcing transactional import rules;
-- canonical analytics calculations.
+- enforcing authorization;
+- writing SQL;
+- manufacturing audit actor IDs;
+- canonical analytics calculations;
+- accepting stale writes silently.
 
-### Rust application/domain layer
+### HTTP/API layer
+
+Responsible for:
+
+- route/version contract;
+- request deserialization;
+- authenticated session extraction;
+- server-derived actor context;
+- authorization checks;
+- DTO/error mapping;
+- request IDs / tracing context;
+- delegating to application services.
+
+Handlers remain thin and do not contain raw persistence/business logic.
+
+### Application/domain layer
 
 Responsible for:
 
 - business rules;
-- import validation and preview;
+- import validation/preview;
 - timestamp/contact normalization;
 - identity matching;
-- product-interest schema parsing;
+- product-interest parsing;
 - status transitions and activity creation;
+- personnel/assignment rules;
 - follow-up operations;
-- analytics query composition;
-- backup/restore orchestration.
+- analytics semantics;
+- concurrency/precondition rules;
+- audit-event semantics.
+
+Existing local Rust rules should be extracted/reused incrementally where practical instead of reimplemented independently in HTTP handlers.
 
 ### Persistence layer
 
-Repository abstractions backed by SQLite/SQLx.
+M6 production repository adapters are backed by PostgreSQL/SQLx.
 
 Responsibilities:
 
 - schema migrations;
 - transactional writes;
 - indexed queries;
-- unique/foreign-key constraints;
-- persistence mapping.
+- unique/foreign-key/check constraints;
+- optimistic concurrency persistence;
+- persistence mapping;
+- session/auth persistence.
 
-## 3. Proposed repository structure
+SQLite adapters remain available only for the frozen local build, tests, migration tooling and explicit development scenarios.
+
+## 5. Repository direction
+
+Target structure evolves toward:
 
 ```text
 /
-├─ README.md
-├─ AGENTS.md
+├─ src/                         # existing Tauri/Web-compatible React UI
+├─ src-tauri/                   # frozen/local Tauri host and local services
+├─ server/                      # M6 Axum API process
+│  ├─ Cargo.toml
+│  ├─ Dockerfile
+│  └─ src/
+├─ crates/                      # introduced incrementally when reuse is proven
+│  ├─ domain/                   # canonical pure rules/types
+│  └─ api-contract/             # optional shared DTO contract
 ├─ docs/
-├─ fixtures/
-├─ package.json
-├─ src/
-│  ├─ app/
-│  ├─ components/
-│  ├─ features/
-│  │  ├─ dashboard/
-│  │  ├─ imports/
-│  │  ├─ leads/
-│  │  ├─ pipeline/
-│  │  ├─ analytics/
-│  │  └─ settings/
-│  ├─ lib/
-│  ├─ routes/
-│  └─ types/
-└─ src-tauri/
-   ├─ Cargo.toml
-   ├─ migrations/
-   └─ src/
-      ├─ commands/
-      ├─ domain/
-      ├─ services/
-      ├─ repositories/
-      ├─ import/
-      │  ├─ mod.rs
-      │  ├─ source.rs
-      │  ├─ xlsx.rs
-      │  ├─ csv.rs
-      │  ├─ headers.rs
-      │  └─ product_interest.rs
-      ├─ db/
-      └─ lib.rs
+└─ fixtures/
 ```
 
-Exact folder names may evolve, but business logic must not collapse into command handlers or React components.
+Do not perform a large speculative extraction before server behavior exists. Extract shared domain code in controlled slices with parity tests.
 
-## 4. Command boundary
+## 6. API boundary
 
-Frontend communicates with Rust through explicit commands, e.g. conceptual API:
+Production API namespace begins at:
 
-- `preview_import(path)`
-- `commit_import(preview_token/options)`
-- `list_imports(query)`
-- `search_leads(filter, pagination)`
-- `get_lead_detail(lead_id)`
-- `update_lead_status(lead_id, status)`
-- `add_note(lead_id, text)`
-- `set_follow_up(lead_id, due_at)`
-- `get_dashboard_metrics(range)`
-- `get_analytics_breakdown(range, dimension)`
-- `create_backup(destination)`
-- `restore_backup(path)`
+```text
+/api/v1
+```
 
-Use generated/shared DTO types where practical; do not expose database row shapes directly to the UI.
+Conceptual route groups:
 
-## 5. Manual file import architecture
+```text
+/health/live
+/health/ready
+/api/v1/auth/*
+/api/v1/me
+/api/v1/staff/*
+/api/v1/leads/*
+/api/v1/follow-ups/*
+/api/v1/pipeline
+/api/v1/dashboard
+/api/v1/analytics/*
+/api/v1/imports/*
+```
 
-Import is split into a source-adapter phase and two application phases.
+Database row shapes are not public API contracts. DTOs are explicit and versioned.
 
-### 5.1 Source adapters
+Standard error direction:
 
-`XlsxFileSource` and `CsvFileSource` convert their format into the same canonical tabular representation before business rules run.
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "...",
+    "requestId": "..."
+  }
+}
+```
+
+## 7. Authentication/session boundary
+
+M6 uses server-side sessions with opaque session secrets.
+
+- Web: Secure + HttpOnly cookie.
+- Tauri: opaque bearer session token; secure OS-backed storage is completed before M7 production release.
+- Session storage/expiry/revocation is authoritative server-side.
+- `app_users.id` remains stable CRM identity.
+- Authentication identity binds to the CRM user rather than replacing it.
+- `actor_user_id` comes from authenticated server context only.
+- Request JSON must never supply the trusted audit actor.
+
+Passwords, raw session tokens and secrets are excluded from logs.
+
+## 8. Authorization boundary
+
+Stable roles:
+
+- `ADMIN`
+- `MANAGER`
+- `SALES`
+
+Authorization is a server concern. React may hide unavailable controls for UX but cannot be the security boundary.
+
+Policy tests must cover endpoint/service actions as role rules are introduced.
+
+## 9. PostgreSQL conventions
+
+- Stable application IDs remain UUID text/UUID-compatible identifiers and survive SQLite migration.
+- External Meta IDs remain exact source identifiers.
+- Canonical timestamps use timezone-aware PostgreSQL timestamp semantics or an explicitly documented equivalent while raw source strings remain preserved.
+- Unique constraints preserve exact submission identity.
+- Foreign keys/check constraints enforce canonical relationships/status/role values where appropriate.
+- Indexes follow real lead/pipeline/follow-up/analytics query paths.
+- PostgreSQL behavior is performance-tested independently; SQLite query assumptions are not blindly copied.
+- PostgreSQL runs on Coolify private/internal networking and is not internet-exposed.
+
+## 10. Manual file import architecture
+
+Manual XLSX/CSV import remains supported after centralization.
+
+Canonical source flow remains:
 
 ```text
 .xlsx ──> XlsxFileSource ─┐
@@ -153,107 +232,87 @@ Import is split into a source-adapter phase and two application phases.
 .csv  ──> CsvFileSource ──┘
 ```
 
-Rules:
+The verified Meta product multi-select rule remains unchanged: structured values split only on `|`, never on comma.
 
-- `.xlsx` uses Calamine and discovers the first supported worksheet/header row.
-- `.csv` uses the Rust `csv` crate, not manual comma splitting.
-- CSV V1 encoding is UTF-8 with optional UTF-8 BOM.
-- File-format adapters may report format-specific metadata/errors, but must not implement identity, deduplication, CRM-state, or product-normalization business rules independently.
-- Unknown additional columns remain available to `raw_payload_json` where feasible.
+Centralized import must run through authenticated API/application services and the authoritative PostgreSQL transaction. It must not allow a client to bypass identity/deduplication/source-preservation rules.
 
-### 5.2 Phase A — Preview
+## 11. Import phases
 
-1. Open selected file read-only.
-2. Select the adapter by validated extension/content expectations.
-3. Locate/map supported headers.
-4. Parse rows into `RawSubmissionRow`.
-5. Validate required fields.
-6. Normalize timestamp/e-mail/phone/country and derive zero-or-more product-interest candidates according to the detected source schema.
-7. Ignore agency-maintained `Status` and `İletişime Geçme Tarihi` as CRM inputs; keep them only in raw payload metadata if present.
-8. Preserve source `lead_status` separately as raw source metadata.
-9. Check external ID against DB.
-10. Check contact identity candidates.
-11. Produce per-row outcome and aggregate summary.
-12. Return preview without writing business records.
+### Preview
 
-### 5.3 Phase B — Commit
+1. Parse supported file/source format.
+2. Locate/map headers.
+3. Preserve raw source values.
+4. Normalize timestamp/e-mail/phone/country/product interests.
+5. Check external submission identity.
+6. Check conservative contact candidates/conflicts.
+7. Return a preview without committing canonical business records.
 
-1. Begin SQLite transaction.
-2. Create import batch record including source format.
-3. Revalidate assumptions that matter for uniqueness.
+### Commit
+
+1. Authenticate/authorize the actor.
+2. Start PostgreSQL transaction.
+3. Revalidate uniqueness/identity assumptions.
 4. Insert only new submissions.
-5. Create/link contacts using conservative identity rules.
-6. Seed default application state for newly created contacts.
-7. Create normalized product-interest rows.
-8. Create import/activity/data-quality metadata.
-9. Commit transaction.
-10. Return committed counts.
+5. Create/link contacts conservatively.
+6. Persist normalized product-interest memberships.
+7. Persist import/data-quality/activity metadata with server-derived actor context where applicable.
+8. Commit atomically.
 
-If any integrity error invalidates the batch, roll back.
+## 12. Concurrency boundary
 
-## 6. Verified Meta multi-select parser boundary
+Centralized mutable CRM state must protect against lost updates.
 
-The post-change export observed on **2026-08-21** keeps the header:
+Approach direction:
 
-`which_product_would_you_like_to_receive_more_information_about?`
+- mutable aggregate DTOs expose revision/version or equivalent precondition metadata;
+- update commands include the client's observed revision when required;
+- stale updates return a typed conflict (HTTP 409 direction);
+- UI surfaces the conflict and reload/retry choice;
+- immutable source/audit rows are append-only and do not use overwrite semantics.
 
-New structured answers use lower-case machine values. Multiple selected values are joined with the pipe character (`|`). A single selection has no delimiter. The parser must:
+## 13. Health and operations
 
-1. preserve the complete raw cell string;
-2. split structured post-change values only on `|`;
-3. trim each token;
-4. map each complete token through the verified machine-value table;
-5. emit one normalized product-interest membership per mapped token;
-6. raise `UNKNOWN_PRODUCT` for unknown tokens without dropping the raw value.
+Server exposes:
 
-Never split structured product answers on commas. One verified token is `implanters,_forceps_&_surgical_instruments`, which contains commas internally.
+- `/health/live`: process is running; no dependency round-trip required.
+- `/health/ready`: critical dependencies, initially PostgreSQL, are available.
 
-Legacy free-text rows using the same header remain routed through the legacy normalization path. Detection must therefore be schema/value-aware and deterministic.
+Coolify readiness should use `/health/ready`.
 
-## 7. Database conventions
+Production logs use structured tracing and request IDs while minimizing PII.
 
-- UUID/ULID local identifiers are application IDs.
-- External Meta IDs are stored as text and remain unchanged.
-- Application-managed UTC timestamps use RFC 3339 text; raw source timestamps remain preserved separately.
-- Enable SQLite foreign keys.
-- File databases use WAL mode with `NORMAL` synchronous mode as accepted in ADR 0005.
-- Add indexes based on actual query paths, especially normalized e-mail/phone, latest submission date, status, follow-up due date, campaign/form/platform dimensions.
+## 14. SQLite → PostgreSQL migration boundary
 
-## 8. Error model
+Migration is a data move, not a semantic redesign.
 
-Backend errors should be typed into categories:
+Must preserve:
 
-- `ValidationError`
-- `ImportSchemaError`
-- `ImportRowError`
-- `UnsupportedFileType`
-- `CsvEncodingError`
-- `IdentityConflict`
-- `NotFound`
-- `DatabaseError`
-- `BackupError`
-- `UnexpectedError`
+- contact/submission IDs;
+- external lead IDs;
+- raw source payloads;
+- normalized product memberships;
+- notes/follow-ups;
+- personnel and assignments;
+- activity/audit chronology;
+- timestamps/source raw strings.
 
-User-facing errors must be clear and non-technical while logs retain enough technical detail for debugging without leaking unnecessary PII.
+Migration tooling produces reconciliation counts/key checks before centralized production acceptance.
 
-## 9. Future integration seams
+## 15. Future integration seams
 
-The architecture allows later adapters:
+New lead/sales integrations must terminate at the centralized backend/application layer:
 
 ```text
 LeadSourceAdapter
-├─ XlsxFileSource      (V1)
-├─ CsvFileSource       (V1)
-├─ GoogleSheetsSource  (future)
-└─ MetaLeadApiSource   (future)
+├─ XlsxFileSource
+├─ CsvFileSource
+├─ MetaLeadApiSource       (future)
+└─ GoogleSheetsSource      (future if still useful)
 
 SalesDataAdapter
-├─ LocalManualSales    (possible V1.x)
-└─ OdooSalesSource     (future)
+├─ Local/Manual metadata
+└─ OdooSalesSource         (future)
 ```
 
-Future adapters must feed the same canonical submission/contact domain rather than bypassing it.
-
-### Product schema adapter rule
-
-Product-question parsing must be version-aware. Legacy free text and the verified Meta multi-select representation are different source schemas that converge on the same canonical many-valued product-interest model. Do not encode form-specific parsing rules in React components or analytics queries.
+No future adapter may bypass canonical identity/source/audit/authorization rules.

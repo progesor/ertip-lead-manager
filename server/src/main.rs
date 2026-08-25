@@ -1,14 +1,16 @@
 mod app;
+mod auth;
 mod config;
 mod db;
 
 use std::error::Error;
 
 use app::{AppState, build_pool, router};
+use auth::{BootstrapStatus, bootstrap_admin};
 use config::Config;
 use db::run_migrations;
 use tokio::net::TcpListener;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -29,17 +31,36 @@ async fn main() -> Result<(), Box<dyn Error>> {
     run_migrations(&pool).await?;
     info!("PostgreSQL migrations are current");
 
+    match bootstrap_admin(&pool, config.bootstrap_admin.as_ref()).await? {
+        BootstrapStatus::Created(user_id) => {
+            info!(user_id = %user_id, "created initial ADMIN account from bootstrap configuration");
+        }
+        BootstrapStatus::ExistingUsers => {
+            info!("application users already exist; bootstrap configuration was not applied");
+        }
+        BootstrapStatus::NotConfigured => {
+            warn!("no users exist and bootstrap ADMIN is not configured; login will be unavailable until an account is provisioned");
+        }
+    }
+
     let listener = TcpListener::bind(config.bind_addr).await?;
 
     info!(
         bind_addr = %config.bind_addr,
         db_max_connections = config.db_max_connections,
+        session_ttl_hours = config.session_ttl_hours,
         "starting Ertip Lead Manager API"
     );
 
-    axum::serve(listener, router(AppState { pool }))
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    axum::serve(
+        listener,
+        router(AppState {
+            pool,
+            session_ttl_hours: config.session_ttl_hours,
+        }),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
 
     Ok(())
 }

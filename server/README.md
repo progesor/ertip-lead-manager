@@ -83,7 +83,7 @@ Only the SHA-256 hash of the session token is stored server-side.
 
 `GET /api/v1/me`, CRM endpoints and logout accept either the Tauri bearer token or the Web session cookie. Passwords are stored only as Argon2id hashes. Five failed password attempts trigger a temporary database-backed account lock.
 
-## CRM API — current M6 slice
+## CRM API — current M6 slices
 
 All CRM endpoints below require an authenticated session. `actor_user_id` is derived from that session and is never accepted as trusted request input.
 
@@ -93,30 +93,36 @@ POST  /api/v1/personnel
 PATCH /api/v1/personnel/{userId}
 PATCH /api/v1/personnel/{userId}/active
 
-GET   /api/v1/leads
-GET   /api/v1/leads/{contactId}
-PUT   /api/v1/leads/{contactId}/assignment
-PATCH /api/v1/leads/{contactId}/status
+GET    /api/v1/leads
+GET    /api/v1/leads/{contactId}
+PUT    /api/v1/leads/{contactId}/assignment
+PATCH  /api/v1/leads/{contactId}/status
+POST   /api/v1/leads/{contactId}/notes
+PATCH  /api/v1/leads/{contactId}/notes/{noteId}
+DELETE /api/v1/leads/{contactId}/notes/{noteId}?expectedRevision={revision}
+PUT    /api/v1/leads/{contactId}/product-interests/{productCode}
 ```
 
 ### Authorization policy
 
 - `ADMIN`: all current personnel and CRM operations.
-- `MANAGER`: may read personnel, read all leads, assign/unassign leads and change lead status; cannot create/update/deactivate personnel.
-- `SALES`: may read only leads currently assigned to their own user ID and may change status only on those leads. They cannot browse other/unassigned leads, manage personnel or reassign leads.
+- `MANAGER`: may read personnel and perform current lead CRM operations across all leads, including assignment, status, notes and product interests; cannot create/update/deactivate personnel.
+- `SALES`: may read and edit CRM content only on leads currently assigned to their own user ID. They may change status, create/update/delete notes and change product interests on those leads. They cannot browse other/unassigned leads, manage personnel or reassign leads.
 
 A `SALES` caller requesting another assignee or the unassigned-only list is rejected server-side. Lead detail outside the caller's assignment scope returns not found so the API does not disclose the existence of another salesperson's lead.
 
+Mutable note operations hold a shared contact-row lock while the SALES assignment scope is checked; assignment and aggregate product-interest mutations use an update lock. This prevents an assignment change from racing between authorization and a scoped note write.
+
 ### Optimistic concurrency
 
-Mutable personnel, assignment and lead-status requests carry an `expectedRevision` value obtained from the latest API response. Successful writes increment the persisted revision. A stale write returns:
+Mutable personnel, assignment, lead-status and product-interest requests carry an `expectedRevision` value obtained from the latest API response. Successful aggregate writes increment the persisted lead/personnel revision. A stale write returns:
 
 ```text
 HTTP 409
 error.code = STALE_REVISION
 ```
 
-This prevents a second client from silently overwriting a newer CRM change.
+Notes use their own note-level `revision` for update/delete, so two users cannot silently overwrite the same note.
 
 Example assignment body:
 
@@ -139,6 +145,40 @@ Example status body:
 ```
 
 Current stable lead statuses remain `NEW`, `CONTACTED`, `REPLIED`, `QUALIFIED`, `QUOTE_SENT`, `WON`, `LOST`, `INVALID`.
+
+### Notes
+
+Create:
+
+```json
+{
+  "body": "Müşteri tekrar aranacak."
+}
+```
+
+Update:
+
+```json
+{
+  "body": "Müşteri yarın tekrar aranacak.",
+  "expectedRevision": 0
+}
+```
+
+Delete uses `expectedRevision` in the query string. Create/update/delete preserve the existing local audit semantics through `NOTE_CREATED`, `NOTE_UPDATED` and `NOTE_DELETED`; the audit actor is the authenticated session user.
+
+### Product interests
+
+The canonical product-code list is identical to the local CRM domain. A product override is set with:
+
+```json
+{
+  "included": true,
+  "expectedRevision": 5
+}
+```
+
+Manual product decisions remain append-only in `contact_product_interest_overrides`. The latest decision overrides automatic submission-derived interest, and each actual change creates `PRODUCT_INTEREST_CHANGED`. No-op requests do not create another override/activity.
 
 ### Personnel authentication state
 
@@ -167,4 +207,4 @@ Do not expose PostgreSQL credentials to Tauri/Web clients.
 
 ## Current M6 boundary
 
-The server foundation, PostgreSQL schema, server-side session authentication, RBAC policy and first PostgreSQL-backed CRM API slice (personnel, assignment, lead list/detail/status) are implemented and covered by the PostgreSQL 17 CI lane. Notes/product interests, follow-ups, pipeline/dashboard/analytics, manual import parity, additional-user credential provisioning, backup/restore operations and SQLite→PostgreSQL migration/reconciliation remain in M6. The frozen local Tauri build remains independent until M7 switches the Windows production client to the API.
+The server foundation, PostgreSQL schema, server-side session authentication, RBAC policy and PostgreSQL-backed CRM slices for personnel, assignment, lead list/detail/status, notes and product-interest overrides are implemented and covered by the PostgreSQL 17 CI lane. Follow-ups, pipeline/dashboard/analytics, manual import parity, additional-user credential provisioning, backup/restore operations and SQLite→PostgreSQL migration/reconciliation remain in M6. The frozen local Tauri build remains independent until M7 switches the Windows production client to the API.

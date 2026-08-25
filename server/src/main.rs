@@ -1,5 +1,6 @@
 mod app;
 mod config;
+mod db;
 
 use std::error::Error;
 

@@ -1,6 +1,8 @@
 mod app;
 mod auth;
+mod authz;
 mod config;
+mod crm;
 mod db;
 
 use std::error::Error;

@@ -44,12 +44,12 @@ mod tests {
             "auth_sessions",
         ] {
             let qualified = format!("public.{table}");
-            let exists = sqlx::query_scalar::<_, Option<String>>("SELECT to_regclass($1)::text")
+            let exists = sqlx::query_scalar::<_, bool>("SELECT to_regclass($1) IS NOT NULL")
                 .bind(&qualified)
                 .fetch_one(&pool)
                 .await
                 .expect("check migrated table");
-            assert_eq!(exists.as_deref(), Some(qualified.as_str()), "missing table {table}");
+            assert!(exists, "missing table {table}");
         }
 
         let mut transaction = pool.begin().await.expect("begin constraint test");

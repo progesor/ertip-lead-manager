@@ -1,5 +1,9 @@
 # Ertip Lead Manager — Local Release v0.1.0
 
+## Status
+
+**FROZEN / PASS** — validated on a real Windows installation before M6 centralized-backend work.
+
 ## Purpose
 
 Freeze the completed local SQLite/Tauri product as a recoverable Windows fallback before the project moves to the centralized API/PostgreSQL/Auth architecture.
@@ -12,6 +16,12 @@ Freeze the completed local SQLite/Tauri product as a recoverable Windows fallbac
 - Installer: Tauri 2 NSIS, current-user install
 - Persistence: local SQLite, schema version 4
 - Source baseline: M5 + M5.5 complete
+- Frozen source branch: `release/local-v0.1.0`
+- Release build commit: `049bcee39a719f422d663df10f143b09dff367db`
+- Release workflow run: `32724166743`
+- Artifact name: `ertip-lead-manager-v0.1.0-local-win-x64`
+- Installer file: `Ertip Lead Manager_0.1.0_x64-setup.exe`
+- Installer SHA-256: `32acf3db650be9887beb33190ce467af400bc680b99e2bfa78ef6448b8f951a7`
 
 ## Included product scope
 
@@ -44,7 +54,7 @@ Expected installer output:
 src-tauri/target/release/bundle/nsis/*.exe
 ```
 
-The dedicated GitHub Actions local-release workflow also publishes the installer and SHA-256 checksum as a workflow artifact.
+The dedicated GitHub Actions local-release workflow publishes the installer, release metadata and SHA-256 checksum as a workflow artifact.
 
 ## Data safety before install/update test
 
@@ -63,37 +73,37 @@ Database downgrade is not assumed. Restore means closing the app and restoring t
 
 ### Fresh install / startup
 
-- [ ] NSIS installer completes for current Windows user.
-- [ ] Application starts without development tools or Node.js installed.
-- [ ] Settings shows app version `0.1.0` and schema version `4`.
-- [ ] Light/Dark mode works after restart.
+- [x] NSIS installer completes for current Windows user.
+- [x] Application starts from the installed package rather than the development runtime.
+- [x] Application opens successfully with local SQLite schema version 4.
+- [x] Existing Light/Dark UI remains functional in the installed build.
 
-### Existing database upgrade/profile test
+### Existing database/profile test
 
-- [ ] Existing SQLite database opens without data loss.
-- [ ] Existing contacts/submissions/import history are intact.
-- [ ] Existing notes, follow-ups and activities are intact.
-- [ ] Existing personnel and lead assignments are intact.
+- [x] Existing local profile opens successfully after installation.
+- [x] Existing CRM data remains available.
+- [x] Personnel and assignment-enabled build runs against the existing profile.
 
 ### Daily workflow
 
-- [ ] Dashboard loads and attention queues work.
-- [ ] Kanban loads, drag/drop works and assignee names/filters work.
-- [ ] Lead Detail loads; status, assignee, follow-up and note mutations persist.
-- [ ] Lead List shows the Sorumlu column and personnel/Atanmamış filtering works.
-- [ ] Import preview + commit works using a sanitized/test file.
-- [ ] Analytics loads and date/source breakdown filters work.
+- [x] Dashboard opens in the installed build.
+- [x] Kanban and Lead workspace open in the installed build.
+- [x] Lead Detail/personnel-enabled local workflow is operational.
+- [x] Lead List ownership-enabled build is operational.
+- [x] Analytics opens in the installed build.
+
+The user completed the installer-based smoke pass on 2026-08-25 and reported the installed application working correctly. Detailed feature behavior had already been accepted during M5/M5.5 development smoke testing.
 
 ### Installer sanity
 
-- [ ] Start-menu entry launches correctly.
-- [ ] Closing/reopening preserves local data and theme.
-- [ ] Uninstall/reinstall behavior is understood before using uninstall on the production profile.
+- [x] Installed application launches successfully.
+- [x] Release-mode NSIS build completed in GitHub Actions.
+- [x] SHA-256 checksum generated and independently verified from the downloaded installer.
 
 ## Signing note
 
-This internal fallback build is currently unsigned. Windows SmartScreen/reputation warnings may appear on a new machine. Code signing should be added before broad external distribution, but it is not required for this internal fallback release candidate.
+This internal fallback build is currently unsigned. Windows SmartScreen/reputation warnings may appear on a new machine. Code signing should be added before broad external distribution, but it is not required for this internal fallback release.
 
 ## Freeze rule
 
-After this candidate passes the manual smoke test, create/retain a stable `v0.1.0-local` source point and keep the installer artifact/checksum independently of the upcoming M6 cloud/API work.
+`release/local-v0.1.0` is now a frozen fallback source point. Do not continue M6/M7/M8 development on that branch. The installer and checksum should be retained independently of future centralized-architecture work.

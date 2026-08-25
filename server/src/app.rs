@@ -1,12 +1,12 @@
 use axum::{
     Json, Router,
-    extract::State,
+    extract::{Path, Query, State},
     http::{
         HeaderMap, HeaderValue, StatusCode,
         header::{AUTHORIZATION, COOKIE, SET_COOKIE},
     },
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{get, patch, post, put},
 };
 use serde::{Deserialize, Serialize};
 use sqlx::{PgPool, postgres::PgPoolOptions};
@@ -16,7 +16,14 @@ use tower_http::{
 };
 use tracing::error;
 
-use crate::auth::{AuthError, AuthService, AuthUser, ClientKind};
+use crate::{
+    auth::{AuthError, AuthService, AuthUser, ClientKind},
+    authz::{Actor, AuthorizationError},
+    crm::{
+        AssignmentRequest, ChangeLeadStatusRequest, CreateStaffRequest, CrmError, CrmService,
+        LeadListRequest, SetStaffActiveRequest, UpdateStaffRequest,
+    },
+};
 
 const SESSION_COOKIE_NAME: &str = "elm_session";
 
@@ -108,6 +115,50 @@ impl From<AuthError> for ApiHttpError {
     }
 }
 
+impl From<CrmError> for ApiHttpError {
+    fn from(crm_error: CrmError) -> Self {
+        match crm_error {
+            CrmError::Authorization(AuthorizationError::Forbidden) => Self::new(
+                StatusCode::FORBIDDEN,
+                "FORBIDDEN",
+                "Bu işlem için yetkiniz yok.",
+            ),
+            CrmError::Authorization(AuthorizationError::InvalidRole(role)) => {
+                error!(persisted_role = %role, "unsupported persisted authorization role");
+                Self::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "AUTHORIZATION_INTERNAL_ERROR",
+                    "Yetkilendirme işlemi tamamlanamadı.",
+                )
+            }
+            CrmError::Validation(message) => {
+                Self::new(StatusCode::BAD_REQUEST, "VALIDATION_ERROR", message)
+            }
+            CrmError::NotFound(message) => {
+                Self::new(StatusCode::NOT_FOUND, "NOT_FOUND", message)
+            }
+            CrmError::Conflict {
+                resource,
+                current_revision,
+            } => Self::new(
+                StatusCode::CONFLICT,
+                "STALE_REVISION",
+                format!(
+                    "{resource} başka bir kullanıcı tarafından değiştirildi. Güncel revision: {current_revision}."
+                ),
+            ),
+            CrmError::Database(database_error) => {
+                error!(error = %database_error, "CRM operation failed");
+                Self::new(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "CRM_INTERNAL_ERROR",
+                    "CRM işlemi tamamlanamadı.",
+                )
+            }
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct LoginRequest {
@@ -121,6 +172,12 @@ struct LoginResponse {
     user: AuthUser,
     expires_at: String,
     token: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct PersonnelListQuery {
+    include_inactive: Option<bool>,
 }
 
 pub fn build_pool(database_url: &str, max_connections: u32) -> Result<PgPool, sqlx::Error> {
@@ -140,6 +197,25 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/auth/login/web", post(login_web))
         .route("/api/v1/auth/logout", post(logout))
         .route("/api/v1/me", get(me))
+        .route(
+            "/api/v1/personnel",
+            get(list_personnel).post(create_personnel),
+        )
+        .route("/api/v1/personnel/{user_id}", patch(update_personnel))
+        .route(
+            "/api/v1/personnel/{user_id}/active",
+            patch(set_personnel_active),
+        )
+        .route("/api/v1/leads", get(list_leads))
+        .route("/api/v1/leads/{contact_id}", get(get_lead))
+        .route(
+            "/api/v1/leads/{contact_id}/assignment",
+            put(assign_lead),
+        )
+        .route(
+            "/api/v1/leads/{contact_id}/status",
+            patch(change_lead_status),
+        )
         .with_state(state)
         .layer(PropagateRequestIdLayer::new(request_id_header.clone()))
         .layer(SetRequestIdLayer::new(request_id_header, MakeRequestUuid))
@@ -243,8 +319,122 @@ async fn logout(
     Ok(response)
 }
 
+async fn list_personnel(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<PersonnelListQuery>,
+) -> Result<Response, ApiHttpError> {
+    let actor = authenticated_actor(&state, &headers).await?;
+    let staff = crm_service(&state)
+        .list_staff(&actor, query.include_inactive.unwrap_or(false))
+        .await?;
+    Ok(Json(staff).into_response())
+}
+
+async fn create_personnel(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<CreateStaffRequest>,
+) -> Result<Response, ApiHttpError> {
+    let actor = authenticated_actor(&state, &headers).await?;
+    let staff = crm_service(&state).create_staff(&actor, request).await?;
+    Ok((StatusCode::CREATED, Json(staff)).into_response())
+}
+
+async fn update_personnel(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(user_id): Path<String>,
+    Json(request): Json<UpdateStaffRequest>,
+) -> Result<Response, ApiHttpError> {
+    let actor = authenticated_actor(&state, &headers).await?;
+    let staff = crm_service(&state)
+        .update_staff(&actor, &user_id, request)
+        .await?;
+    Ok(Json(staff).into_response())
+}
+
+async fn set_personnel_active(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(user_id): Path<String>,
+    Json(request): Json<SetStaffActiveRequest>,
+) -> Result<Response, ApiHttpError> {
+    let actor = authenticated_actor(&state, &headers).await?;
+    let staff = crm_service(&state)
+        .set_staff_active(&actor, &user_id, request)
+        .await?;
+    Ok(Json(staff).into_response())
+}
+
+async fn list_leads(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(request): Query<LeadListRequest>,
+) -> Result<Response, ApiHttpError> {
+    let actor = authenticated_actor(&state, &headers).await?;
+    let leads = crm_service(&state).list_leads(&actor, request).await?;
+    Ok(Json(leads).into_response())
+}
+
+async fn get_lead(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(contact_id): Path<String>,
+) -> Result<Response, ApiHttpError> {
+    let actor = authenticated_actor(&state, &headers).await?;
+    match crm_service(&state).get_lead(&actor, &contact_id).await? {
+        Some(lead) => Ok(Json(lead).into_response()),
+        None => Err(ApiHttpError::new(
+            StatusCode::NOT_FOUND,
+            "NOT_FOUND",
+            "lead contact",
+        )),
+    }
+}
+
+async fn assign_lead(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(contact_id): Path<String>,
+    Json(request): Json<AssignmentRequest>,
+) -> Result<Response, ApiHttpError> {
+    let actor = authenticated_actor(&state, &headers).await?;
+    let result = crm_service(&state)
+        .assign_lead(&actor, &contact_id, request)
+        .await?;
+    Ok(Json(result).into_response())
+}
+
+async fn change_lead_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(contact_id): Path<String>,
+    Json(request): Json<ChangeLeadStatusRequest>,
+) -> Result<Response, ApiHttpError> {
+    let actor = authenticated_actor(&state, &headers).await?;
+    let result = crm_service(&state)
+        .change_lead_status(&actor, &contact_id, request)
+        .await?;
+    Ok(Json(result).into_response())
+}
+
+async fn authenticated_actor(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<Actor, ApiHttpError> {
+    let token = session_token_from_headers(headers).ok_or(AuthError::Unauthorized)?;
+    let session = auth_service(state).resolve(&token).await?;
+    Actor::from_auth_user(&session.user)
+        .map_err(|error| ApiHttpError::from(CrmError::Authorization(error)))
+}
+
 fn auth_service(state: &AppState) -> AuthService {
     AuthService::new(state.pool.clone(), state.session_ttl_hours)
+}
+
+fn crm_service(state: &AppState) -> CrmService {
+    CrmService::new(state.pool.clone())
 }
 
 fn session_cookie(token: &str, ttl_hours: i64) -> Result<HeaderValue, ApiHttpError> {
@@ -329,6 +519,20 @@ mod tests {
             .expect("response");
 
         assert_eq!(response.status(), axum::http::StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn crm_routes_require_auth_before_database_access() {
+        let response = router(state())
+            .oneshot(
+                Request::builder()
+                    .uri("/api/v1/leads")
+                    .body(Body::empty())
+                    .expect("request"),
+            )
+            .await
+            .expect("response");
+        assert_eq!(response.status(), axum::http::StatusCode::UNAUTHORIZED);
     }
 
     #[test]

@@ -5,30 +5,30 @@
 **PASS:** foundation/auth/bootstrap, follow-ups, pipeline/dashboard/analytics, manual imports.  
 **CODE + CI PASS / STAGING PENDING:** additional-user credential lifecycle.
 
-Validation date: 2026-08-26  
-Environment: Coolify staging  
-Public API hostname: `lead-api-staging.progesor.net`  
-Database: private PostgreSQL 17  
-Source branch: `feat/m6-central-backend-foundation`
+Environment: `lead-api-staging.progesor.net` on Coolify + private PostgreSQL 17.  
+Source branch: `feat/m6-central-backend-foundation`.
 
-This evidence intentionally excludes passwords, connection strings, raw bearer tokens, raw activation/reset tokens and real customer PII.
+This record excludes passwords, database connection strings, raw bearer tokens, raw invitation/reset tokens and real customer PII.
 
-## Proven live-staging checkpoints
+## Live staging evidence
 
-- Cloudflare HTTPS → Coolify Axum container → private PostgreSQL 17;
-- rolling deploy + custom `/health/ready` PostgreSQL dependency check;
-- first ADMIN bootstrap, HTTPS bearer login, `/me`, logout 204, revoked-token 401;
-- bootstrap ADMIN environment variables removed, healthy redeploy, persisted ADMIN login;
+Validated:
+
+- Cloudflare HTTPS → Coolify API → private PostgreSQL;
+- rolling deploy and PostgreSQL-backed `/health/ready`;
+- first ADMIN bootstrap;
+- HTTPS bearer login + `/me`;
+- logout 204 + revoked-token 401;
+- bootstrap environment variables removed;
+- healthy redeploy and persisted ADMIN login without bootstrap secrets;
 - synthetic follow-up create/list/reschedule/stale-409/complete;
-- pipeline all eight columns with `perColumnLimit=100` and synthetic lead in `NEW`;
-- analytics expected zero-submission result with all eight funnel buckets;
+- pipeline all 8 statuses, `perColumnLimit=100`, synthetic lead in `NEW`;
+- analytics expected zero-submission result with all 8 funnel buckets;
 - dashboard total/new KPI = 1 and synthetic lead in `newUncontacted`.
 
-## Manual import live-staging checkpoint
+## Manual import live staging
 
-A generated six-row synthetic UTF-8 CSV was uploaded over HTTPS.
-
-First preview/commit:
+A six-row synthetic UTF-8 CSV produced on preview and first commit:
 
 ```text
 totalRows             = 6
@@ -41,37 +41,37 @@ rowErrors             = 0
 warningCount          = 0
 ```
 
-The first commit recorded five submissions and a `COMMITTED` batch. Re-submitting the identical file returned zero importable submissions and six exact duplicates, while history recorded a second `COMMITTED` batch. Live import idempotency and batch-history preservation are PASS.
+The first commit wrote five submissions and a committed batch. Re-submitting the exact same file produced zero importable submissions and six exact duplicates. Import history contained a second committed batch with zero imported submissions. Live import idempotency and batch-history preservation are PASS.
 
-## Credential lifecycle pre-staging gate
+## Credential lifecycle pre-staging
 
 Implemented and PostgreSQL-CI validated:
 
-- ADMIN-only 24-hour `PROVISION` / `RESET` tokens;
-- only SHA-256 token hashes persisted;
+- ADMIN-only 24-hour one-time `PROVISION` / `RESET` tokens;
+- SHA-256 token hashes only;
+- user-chosen Argon2id password activation;
 - single-use activation/reset;
-- user-selected Argon2id password;
-- self password change retaining current session and revoking other sessions;
+- self password change retaining current session while revoking all others;
 - ADMIN reset immediately blocking old-password login and revoking all target sessions;
-- reset activation establishing the replacement password;
-- separate credential security-event audit;
+- reset activation with replacement password;
+- credential security-event audit;
 - atomic login reset-gate/session insertion under credential-row locking.
 
-Server suite: **28/28 PASS**. Real credential staging smoke is next.
+PostgreSQL 17 server suite: **28/28 PASS**. Credential staging smoke is next.
 
-## Secret / deployment policy
+## Deployment / secret policy
 
-- PostgreSQL remains private/internal;
-- runtime secrets are not build-time variables;
-- bootstrap ADMIN secrets remain removed;
-- Coolify auto-deploy remains OFF during active M6;
-- frozen local Tauri release is not pointed at staging.
+- PostgreSQL stays private/internal;
+- runtime secrets are not build-time values;
+- bootstrap ADMIN secrets stay removed;
+- Coolify auto-deploy stays OFF during M6;
+- frozen local Tauri remains independent.
 
 ## Remaining M6 validation
 
-1. additional-user credential lifecycle staging smoke;
+1. credential lifecycle staging smoke;
 2. PostgreSQL backup/restore evidence;
 3. SQLite schema-v4 → PostgreSQL migration/reconciliation;
 4. secure Tauri token storage before M7 production rollout.
 
-PR #15 remains draft/open until all M6 acceptance gates pass.
+PR #15 remains draft/open until all acceptance gates pass.

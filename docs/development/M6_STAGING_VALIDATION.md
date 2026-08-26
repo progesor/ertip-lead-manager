@@ -8,65 +8,46 @@
 Environment: `lead-api-staging.progesor.net` on Coolify + private PostgreSQL 17.  
 Source branch: `feat/m6-central-backend-foundation`.
 
-This evidence intentionally excludes passwords, connection strings, raw bearer tokens, raw invitation/reset tokens and real customer PII.
+This evidence excludes passwords, connection strings, raw bearer tokens, raw invitation/reset tokens and real customer PII.
 
-## Proven live-staging checkpoints
+## Live staging evidence
 
-- Cloudflare HTTPS → Coolify API → private PostgreSQL;
-- rolling deploy + custom `/health/ready` PostgreSQL dependency check;
-- first ADMIN bootstrap, HTTPS bearer login, `/me`, logout 204, revoked-token 401;
-- bootstrap environment variables removed, healthy redeploy, persisted ADMIN login;
-- synthetic follow-up create/list/reschedule/stale-409/complete;
-- pipeline all eight statuses, `perColumnLimit=100`, synthetic lead in `NEW`;
-- analytics expected zero-submission result with all eight funnel buckets;
-- dashboard total/new KPI = 1 and synthetic lead in `newUncontacted`.
+Validated:
 
-## Manual import live staging
+- HTTPS API → private PostgreSQL readiness;
+- rolling deploy and custom `/health/ready`;
+- first ADMIN bootstrap and later bootstrap-secret removal;
+- bearer login, `/me`, logout 204 and revoked-token 401;
+- follow-up create/list/reschedule/stale-409/complete;
+- pipeline all eight statuses with `perColumnLimit=100`;
+- analytics expected zero-submission result with eight funnel buckets;
+- dashboard expected synthetic-lead KPI/attention result.
 
-A generated six-row synthetic UTF-8 CSV produced on preview and first commit:
+## Manual import staging
 
-```text
-totalRows             = 6
-importableSubmissions = 5
-newContacts           = 4
-repeatSubmissions     = 1
-exactDuplicates       = 1
-identityConflicts     = 0
-rowErrors             = 0
-warningCount          = 0
-```
-
-The first commit wrote five submissions and a committed batch. Re-submitting the exact same file produced zero importable submissions and six exact duplicates. Import history contained a second committed batch with zero imported submissions. Live import idempotency and batch-history preservation are PASS.
+A six-row synthetic CSV produced 5 importable submissions, 4 new contacts, 1 repeat and 1 exact duplicate. First commit recorded five submissions and a committed batch. Re-submitting the identical file produced 0 importable submissions and 6 exact duplicates while recording a second committed batch. Identity conflicts, row errors and warnings remained zero. Manual import idempotency/history are PASS.
 
 ## Credential lifecycle pre-staging
 
 Implemented and PostgreSQL-CI validated:
 
-- ADMIN-only 24-hour one-time `PROVISION` / `RESET` tokens;
+- ADMIN-only 24-hour `PROVISION` / `RESET` tokens;
 - SHA-256 token hashes only;
-- user-chosen Argon2id password activation;
-- single-use activation/reset;
-- self password change retaining current session while revoking all others;
-- ADMIN reset immediately blocking old-password login and revoking all target sessions;
+- user-selected Argon2id activation password;
+- single-use tokens;
+- self password change retaining current session and revoking all others;
+- ADMIN reset blocking old-password login and revoking all target sessions;
 - reset activation with replacement password;
-- credential security-event audit;
-- atomic login reset-gate/session insertion under credential-row locking.
+- security-event audit;
+- atomic reset/login session gate under credential-row locking.
 
-PostgreSQL 17 server suite: **28/28 PASS**. Credential staging smoke is next.
+PostgreSQL 17 server suite: **28/28 PASS**. Credential lifecycle is the next real staging gate.
 
-## Deployment / secret policy
-
-- PostgreSQL stays private/internal;
-- runtime secrets are not build-time values;
-- bootstrap ADMIN secrets stay removed;
-- Coolify auto-deploy stays OFF during M6;
-- frozen local Tauri remains independent.
-
-## Remaining M6 validation
+## Remaining M6
 
 1. credential lifecycle staging smoke;
 2. PostgreSQL backup/restore evidence;
-3. SQLite schema-v4 → PostgreSQL migration/reconciliation;
+3. SQLite-v4 → PostgreSQL migration/reconciliation;
 4. secure Tauri token storage before M7 production rollout.
 
-PR #15 remains draft/open until all acceptance gates pass.
+Coolify auto-deploy stays OFF and PR #15 stays draft/open until all gates pass.

@@ -7,6 +7,7 @@ mod crm_mutations;
 mod db;
 mod followups;
 mod followups_http;
+mod pipeline;
 
 use std::error::Error;
 
@@ -53,7 +54,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         pool,
         session_ttl_hours: config.session_ttl_hours,
     };
-    let app = router(state.clone()).merge(followups_http::router(state));
+    let app = router(state.clone())
+        .merge(followups_http::router(state.clone()))
+        .merge(pipeline::router(state));
 
     info!(
         bind_addr = %config.bind_addr,

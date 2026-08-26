@@ -102,7 +102,8 @@ impl AuthService {
                 u.role,
                 u.is_active,
                 c.password_hash,
-                c.locked_until
+                c.locked_until,
+                c.must_change_password
             FROM app_users u
             JOIN app_credentials c ON c.user_id = u.id
             WHERE lower(u.email) = lower($1)
@@ -121,8 +122,9 @@ impl AuthService {
         let is_active: bool = row.try_get("is_active")?;
         let password_hash: String = row.try_get("password_hash")?;
         let locked_until: Option<DateTime<Utc>> = row.try_get("locked_until")?;
+        let reset_pending: bool = row.try_get("must_change_password")?;
 
-        if !is_active {
+        if !is_active || reset_pending {
             return Err(AuthError::InvalidCredentials);
         }
 
@@ -143,12 +145,17 @@ impl AuthService {
             return Err(AuthError::InvalidCredentials);
         }
 
-        sqlx::query(
-            "UPDATE app_credentials SET failed_attempts = 0, locked_until = NULL, updated_at = now() WHERE user_id = $1",
+        // Re-check the reset gate atomically after password verification. If an ADMIN
+        // started a reset while verification was running, no new session may be issued.
+        let credential_update = sqlx::query(
+            "UPDATE app_credentials SET failed_attempts = 0, locked_until = NULL, updated_at = now() WHERE user_id = $1 AND must_change_password = FALSE",
         )
         .bind(&user_id)
         .execute(&self.pool)
         .await?;
+        if credential_update.rows_affected() == 0 {
+            return Err(AuthError::InvalidCredentials);
+        }
 
         let user = AuthUser {
             id: user_id.clone(),
@@ -261,7 +268,7 @@ impl AuthService {
                     ELSE locked_until
                 END,
                 updated_at = now()
-            WHERE user_id = $1
+            WHERE user_id = $1 AND must_change_password = FALSE
             "#,
         )
         .bind(user_id)

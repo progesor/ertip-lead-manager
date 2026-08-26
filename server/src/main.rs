@@ -3,6 +3,7 @@ mod app;
 mod auth;
 mod authz;
 mod config;
+mod credentials;
 mod crm;
 mod crm_mutations;
 mod dashboard;
@@ -59,6 +60,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         session_ttl_hours: config.session_ttl_hours,
     };
     let app = router(state.clone())
+        .merge(credentials::router(state.clone()))
         .merge(followups_http::router(state.clone()))
         .merge(pipeline::router(state.clone()))
         .merge(analytics::router(state.clone()))

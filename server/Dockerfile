@@ -18,6 +18,7 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY --from=builder /build/target/release/ertip-lead-manager-server /usr/local/bin/ertip-lead-manager-server
+COPY --from=builder /build/target/release/migrate_sqlite_v4 /usr/local/bin/migrate_sqlite_v4
 
 ENV ELM_BIND_ADDR=0.0.0.0:8080
 ENV RUST_LOG=info,ertip_lead_manager_server=info,tower_http=info

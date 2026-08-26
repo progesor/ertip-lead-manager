@@ -9,6 +9,8 @@ mod dashboard;
 mod db;
 mod followups;
 mod followups_http;
+mod import_domain;
+mod imports;
 mod pipeline;
 
 use std::error::Error;
@@ -60,7 +62,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .merge(followups_http::router(state.clone()))
         .merge(pipeline::router(state.clone()))
         .merge(analytics::router(state.clone()))
-        .merge(dashboard::router(state));
+        .merge(dashboard::router(state.clone()))
+        .merge(imports::router(state));
 
     info!(
         bind_addr = %config.bind_addr,

@@ -35,13 +35,7 @@ Run:
 cargo run --manifest-path server/Cargo.toml
 ```
 
-At startup the server:
-
-1. validates configuration;
-2. creates a lazy PostgreSQL pool;
-3. applies embedded SQLx migrations;
-4. performs first-ADMIN bootstrap only when the user table is empty and bootstrap configuration is present;
-5. starts the HTTP listener.
+At startup the server validates configuration, creates the PostgreSQL pool, applies embedded SQLx migrations, performs the optional first-ADMIN bootstrap and starts the HTTP listener.
 
 ## Health and authentication endpoints
 
@@ -57,35 +51,11 @@ GET  /api/v1/me
 
 `/health/live` proves the process/router is alive. `/health/ready` performs a PostgreSQL `SELECT 1` and returns a non-200 response when the database is not available.
 
-### Tauri login
+Tauri login returns an opaque session token that is sent as `Authorization: Bearer <token>`. Only its SHA-256 hash is stored server-side. Web login uses the same credentials but returns the session through a `Secure; HttpOnly; SameSite=Lax` cookie. Passwords are stored as Argon2id hashes and repeated failed logins trigger the database-backed temporary lock policy.
 
-```http
-POST /api/v1/auth/login/tauri
-Content-Type: application/json
+## Current `/api/v1` CRM surface
 
-{
-  "email": "admin@example.com",
-  "password": "..."
-}
-```
-
-The response includes an opaque session `token`. Send it as:
-
-```http
-Authorization: Bearer <token>
-```
-
-Only the SHA-256 hash of the session token is stored server-side.
-
-### Web login
-
-`POST /api/v1/auth/login/web` uses the same credentials but returns the session through a `Secure; HttpOnly; SameSite=Lax` cookie. The token is not included in the JSON body.
-
-`GET /api/v1/me`, CRM endpoints and logout accept either the Tauri bearer token or the Web session cookie. Passwords are stored only as Argon2id hashes. Five failed password attempts trigger a temporary database-backed account lock.
-
-## CRM API — current M6 slices
-
-All CRM endpoints below require an authenticated session. `actor_user_id` is derived from that session and is never accepted as trusted request input.
+All endpoints require an authenticated session unless explicitly documented otherwise. Trusted actor identity is always derived from the server-side session and is never accepted from a request body.
 
 ```text
 GET   /api/v1/personnel?includeInactive=false
@@ -101,88 +71,111 @@ POST   /api/v1/leads/{contactId}/notes
 PATCH  /api/v1/leads/{contactId}/notes/{noteId}
 DELETE /api/v1/leads/{contactId}/notes/{noteId}?expectedRevision={revision}
 PUT    /api/v1/leads/{contactId}/product-interests/{productCode}
+
+GET   /api/v1/leads/{contactId}/follow-ups
+POST  /api/v1/leads/{contactId}/follow-ups
+PATCH /api/v1/leads/{contactId}/follow-ups/{followUpId}
+POST  /api/v1/leads/{contactId}/follow-ups/{followUpId}/complete
+POST  /api/v1/leads/{contactId}/follow-ups/{followUpId}/cancel
+
+GET /api/v1/pipeline
+GET /api/v1/dashboard/attention
+GET /api/v1/analytics
+
+POST /api/v1/imports/preview
+POST /api/v1/imports/commit
+GET  /api/v1/imports/history?limit=20
 ```
 
 ### Authorization policy
 
-- `ADMIN`: all current personnel and CRM operations.
-- `MANAGER`: may read personnel and perform current lead CRM operations across all leads, including assignment, status, notes and product interests; cannot create/update/deactivate personnel.
-- `SALES`: may read and edit CRM content only on leads currently assigned to their own user ID. They may change status, create/update/delete notes and change product interests on those leads. They cannot browse other/unassigned leads, manage personnel or reassign leads.
+- `ADMIN`: personnel administration, all current CRM operations/read models and manual imports.
+- `MANAGER`: personnel read, CRM operations/read models across all leads and manual imports; cannot create/update/deactivate personnel.
+- `SALES`: CRM reads and edits only for leads currently assigned to their own user ID. SALES cannot manage personnel, reassign leads or run manual imports.
 
-A `SALES` caller requesting another assignee or the unassigned-only list is rejected server-side. Lead detail outside the caller's assignment scope returns not found so the API does not disclose the existence of another salesperson's lead.
+SALES scope is enforced inside PostgreSQL queries/mutations rather than only in UI filtering. Out-of-scope lead detail/mutations do not disclose another salesperson's lead.
 
-Mutable note operations hold a shared contact-row lock while the SALES assignment scope is checked; assignment and aggregate product-interest mutations use an update lock. This prevents an assignment change from racing between authorization and a scoped note write.
+### Optimistic concurrency and audit actor
 
-### Optimistic concurrency
+Mutable personnel, assignment, lead-status and product-interest requests carry `expectedRevision`; notes and follow-ups use their own resource revision. Stale writes return HTTP `409` with `error.code = STALE_REVISION`.
 
-Mutable personnel, assignment, lead-status and product-interest requests carry an `expectedRevision` value obtained from the latest API response. Successful aggregate writes increment the persisted lead/personnel revision. A stale write returns:
+Activities created by centralized mutations use the authenticated session user as `actor_user_id`. Scoped writes hold the contact row as needed so assignment changes cannot race between authorization and mutation.
 
-```text
-HTTP 409
-error.code = STALE_REVISION
-```
-
-Notes use their own note-level `revision` for update/delete, so two users cannot silently overwrite the same note.
-
-Example assignment body:
-
-```json
-{
-  "assignedUserId": "user-uuid-or-stable-id",
-  "expectedRevision": 3
-}
-```
-
-Use `null` for `assignedUserId` to unassign a lead.
-
-Example status body:
-
-```json
-{
-  "status": "CONTACTED",
-  "expectedRevision": 4
-}
-```
-
-Current stable lead statuses remain `NEW`, `CONTACTED`, `REPLIED`, `QUALIFIED`, `QUOTE_SENT`, `WON`, `LOST`, `INVALID`.
-
-### Notes
-
-Create:
-
-```json
-{
-  "body": "Müşteri tekrar aranacak."
-}
-```
-
-Update:
-
-```json
-{
-  "body": "Müşteri yarın tekrar aranacak.",
-  "expectedRevision": 0
-}
-```
-
-Delete uses `expectedRevision` in the query string. Create/update/delete preserve the existing local audit semantics through `NOTE_CREATED`, `NOTE_UPDATED` and `NOTE_DELETED`; the audit actor is the authenticated session user.
+Current stable lead statuses are `NEW`, `CONTACTED`, `REPLIED`, `QUALIFIED`, `QUOTE_SENT`, `WON`, `LOST`, `INVALID`.
 
 ### Product interests
 
-The canonical product-code list is identical to the local CRM domain. A product override is set with:
+Automatic interests remain submission-derived. Manual product decisions remain append-only in `contact_product_interest_overrides`; the latest decision overrides the automatic result. No-op requests do not create redundant override/activity rows.
 
-```json
-{
-  "included": true,
-  "expectedRevision": 5
-}
+### Follow-ups
+
+Follow-ups preserve the local `OPEN` → `COMPLETED` / `CANCELLED` lifecycle, RFC3339-to-UTC normalization, revision protection and authenticated audit events. SALES can mutate only follow-ups belonging to their currently assigned leads.
+
+### Pipeline, dashboard and analytics
+
+The PostgreSQL read models preserve the proven local semantics:
+
+- pipeline active columns `NEW` through `QUOTE_SENT`, optional terminal `WON`/`LOST`/`INVALID`, bounded per-column cards, effective product interests, warnings/repeat/assignee/product/country/search and open follow-up `TODAY`/`OVERDUE` filters;
+- dashboard KPI/attention groups for NEW leads, due-today/overdue follow-ups, recent repeats, open quality issues and a bounded submission summary window;
+- analytics lower-inclusive/upper-exclusive submission windows, repeat-submission semantics, current-status funnel and country/platform/raw-product/campaign/form/adset/ad breakdowns.
+
+For SALES callers all three read models are scoped server-side to leads currently assigned to that salesperson.
+
+## Manual import API
+
+Manual import parity accepts real source files; clients do not submit pre-normalized lead JSON. The server parses and validates the uploaded source using the canonical import rules.
+
+Supported input:
+
+- `.csv` — UTF-8, BOM tolerated;
+- `.xlsx` — scans worksheets/header rows using the same required-column rules as the local importer;
+- maximum upload size: 20 MiB;
+- multipart field name: `file`.
+
+Required lead headers remain:
+
+```text
+id
+created_time
+full_name
+email
+phone_number
 ```
 
-Manual product decisions remain append-only in `contact_product_interest_overrides`. The latest decision overrides automatic submission-derived interest, and each actual change creates `PRODUCT_INTEREST_CHANGED`. No-op requests do not create another override/activity.
+Preview example:
 
-### Personnel authentication state
+```text
+POST /api/v1/imports/preview
+Content-Type: multipart/form-data
+file=<CSV or XLSX>
+```
 
-Creating a personnel record in the current CRM slice creates the stable `app_users` identity but does not automatically issue a password. Personnel responses expose `authEnabled` so an ADMIN can distinguish a CRM identity from a credential-enabled login identity. Credential provisioning/invitation for additional users remains a later M6 authentication slice; the first ADMIN is still created through the one-time bootstrap contract above.
+Preview is read-only. It returns row decisions and totals for new contacts, repeat submissions, exact duplicate submissions, identity conflicts, row errors and normalization warnings.
+
+Commit uses the same multipart contract:
+
+```text
+POST /api/v1/imports/commit
+```
+
+Important commit guarantees:
+
+- the file is parsed and the identity plan is rebuilt at commit time; preview output is never trusted as commit authority;
+- PostgreSQL transaction-level advisory locking serializes manual imports so concurrent users cannot race the same identity/duplicate snapshot;
+- identity conflicts or row errors block and roll back the whole commit;
+- exact duplicate external submission IDs are skipped;
+- importing the same file again is idempotent for submissions while still recording import-batch history;
+- repeat submissions do not overwrite the lead's current CRM status;
+- `Status` and `İletişime Geçme Tarihi` agency columns remain in immutable raw payload only and are not treated as CRM status/contact-date inputs;
+- raw source payload, normalized identities, product interests and data-quality warnings are preserved in PostgreSQL;
+- `LEAD_CREATED` and `SUBMISSION_IMPORTED` activities use the authenticated ADMIN/MANAGER actor;
+- contact aggregate revision increments when an import updates contact-derived fields/submission count.
+
+`GET /api/v1/imports/history` exposes recent committed batch summaries. SALES callers are rejected for preview, commit and history.
+
+## Personnel authentication state
+
+Creating a personnel record creates the stable `app_users` CRM identity but does not yet automatically issue a password. Personnel responses expose `authEnabled` so ADMIN can distinguish CRM identity from credential-enabled login identity. Additional-user credential provisioning/invitation/reset remains a later M6 authentication slice.
 
 ## Docker / Coolify
 
@@ -191,8 +184,6 @@ Build from repository root:
 ```bash
 docker build -f server/Dockerfile -t ertip-lead-manager-server .
 ```
-
-The container listens on port `8080` by default. Supply `DATABASE_URL` and authentication bootstrap/runtime secrets through Coolify environment configuration.
 
 Recommended Coolify setup:
 
@@ -207,4 +198,4 @@ Do not expose PostgreSQL credentials to Tauri/Web clients.
 
 ## Current M6 boundary
 
-The server foundation, PostgreSQL schema, server-side session authentication, RBAC policy and PostgreSQL-backed CRM slices for personnel, assignment, lead list/detail/status, notes and product-interest overrides are implemented and covered by the PostgreSQL 17 CI lane. Follow-ups, pipeline/dashboard/analytics, manual import parity, additional-user credential provisioning, backup/restore operations and SQLite→PostgreSQL migration/reconciliation remain in M6. The frozen local Tauri build remains independent until M7 switches the Windows production client to the API.
+Foundation, PostgreSQL schema, authentication/RBAC, personnel/assignment, lead CRM operations, notes, product overrides, follow-ups, pipeline/dashboard/analytics and manual import server parity are implemented. Foundation/auth/follow-up and pipeline/dashboard/analytics have passed real Coolify staging checkpoints; manual import still requires its deliberate staging smoke test. Remaining M6 work includes additional-user credential provisioning, PostgreSQL backup/restore evidence, SQLite schema-v4 → PostgreSQL migration/reconciliation and secure Tauri token storage before the M7 production API switch. The frozen local Tauri build remains independent throughout M6.

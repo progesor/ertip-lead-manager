@@ -118,6 +118,7 @@ Authorization is enforced server-side, inside service/query scope rather than on
 - [x] ADMIN reset + all-session revoke + old-password gate;
 - [x] one-time hash-only 24h activation/reset tokens;
 - [x] credential security-event audit;
+- [x] atomic reset/login session gate;
 - [ ] deliberate real-staging credential lifecycle smoke test;
 - [ ] secure Tauri client token storage before M7 production switch.
 

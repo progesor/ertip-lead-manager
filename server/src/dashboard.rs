@@ -592,7 +592,7 @@ mod tests {
             ("m6-dash-s3", "m6-dash-repeat", "m6:dash:s3", "2098-08-22T09:00:00Z"),
             ("m6-dash-s4", "m6-dash-won", "m6:dash:s4", "2098-08-22T10:00:00Z"),
         ] {
-            sqlx::query("INSERT INTO lead_submissions (id, lead_contact_id, import_batch_id, external_lead_id, source_created_at_utc, source_created_at_raw, raw_payload_json, created_at) VALUES ($1, $2, 'm6-dash-batch', $3, $4, $4, '{}', $4)")
+            sqlx::query("INSERT INTO lead_submissions (id, lead_contact_id, import_batch_id, external_lead_id, source_created_at_utc, source_created_at_raw, raw_payload_json, created_at) VALUES ($1, $2, 'm6-dash-batch', $3, $4::timestamptz, $4, '{}', $4::timestamptz)")
                 .bind(id).bind(contact).bind(external).bind(ts).execute(&pool).await.expect("seed submission");
         }
         sqlx::query("INSERT INTO follow_ups (id, lead_contact_id, due_at, status, revision, created_at, updated_at) VALUES ('m6-dash-overdue', 'm6-dash-new', '2098-08-22T08:30:00Z', 'OPEN', 0, now(), now()), ('m6-dash-today', 'm6-dash-repeat', '2098-08-22T12:00:00Z', 'OPEN', 0, now(), now())")

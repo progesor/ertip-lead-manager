@@ -601,7 +601,7 @@ mod tests {
             .execute(&pool).await.expect("seed quality");
 
         let request = || DashboardAttentionRequest {
-            now_utc: "2098-08-22T10:00:00Z".to_string(),
+            now_utc: "2098-08-22T11:00:00Z".to_string(),
             today_start_utc: "2098-08-22T09:00:00Z".to_string(),
             tomorrow_start_utc: "2098-08-23T09:00:00Z".to_string(),
             recent_repeat_since_utc: "2098-08-22T00:00:00Z".to_string(),

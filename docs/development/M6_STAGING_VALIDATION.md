@@ -11,40 +11,24 @@ Public API hostname: `lead-api-staging.progesor.net`
 Database: private PostgreSQL 17  
 Source branch: `feat/m6-central-backend-foundation`
 
-No passwords, database connection strings, raw bearer tokens, raw invitation/reset tokens, personal e-mail addresses or other secrets/PII are recorded here.
+This evidence intentionally excludes passwords, connection strings, raw bearer tokens, raw activation/reset tokens and real customer PII.
 
-## Deployment / foundation
+## Proven live-staging checkpoints
 
-Validated through Cloudflare HTTPS → Coolify Axum container → private PostgreSQL 17:
+- Cloudflare HTTPS → Coolify Axum container → private PostgreSQL 17;
+- rolling deploy + custom `/health/ready` PostgreSQL dependency check;
+- first ADMIN bootstrap, HTTPS bearer login, `/me`, logout 204, revoked-token 401;
+- bootstrap ADMIN environment variables removed, healthy redeploy, persisted ADMIN login;
+- synthetic follow-up create/list/reschedule/stale-409/complete;
+- pipeline all eight columns with `perColumnLimit=100` and synthetic lead in `NEW`;
+- analytics expected zero-submission result with all eight funnel buckets;
+- dashboard total/new KPI = 1 and synthetic lead in `newUncontacted`.
 
-- rolling deployment;
-- Docker custom `/health/ready` healthcheck;
-- real PostgreSQL readiness dependency check;
-- HTTPS public health endpoint;
-- first ADMIN bootstrap;
-- Tauri bearer login + `/me`;
-- logout 204 + revoked-token 401;
-- removal of all bootstrap ADMIN environment variables;
-- healthy redeploy and persisted ADMIN login without bootstrap secrets.
+## Manual import live-staging checkpoint
 
-## Follow-up staging
+A generated six-row synthetic UTF-8 CSV was uploaded over HTTPS.
 
-A synthetic staging-only lead validated authenticated create/list/reschedule/stale-409/complete behavior.
-
-## Pipeline / dashboard / analytics staging
-
-Using the synthetic lead:
-
-- pipeline returned all eight status columns with `perColumnLimit=100` and the lead in `NEW`;
-- analytics returned the expected zero-submission result and all eight funnel buckets;
-- dashboard returned total/new KPI = 1 and the lead in `newUncontacted`;
-- other attention groups were empty as expected.
-
-## Manual import staging
-
-A generated staging-only UTF-8 CSV with six synthetic rows was uploaded through the public HTTPS API.
-
-Preview / first commit:
+First preview/commit:
 
 ```text
 totalRows             = 6
@@ -57,51 +41,37 @@ rowErrors             = 0
 warningCount          = 0
 ```
 
-The first commit created five submissions and a committed batch. Re-submitting the exact same file produced:
-
-```text
-totalRows             = 6
-importableSubmissions = 0
-newContacts           = 0
-repeatSubmissions     = 0
-exactDuplicates       = 6
-identityConflicts     = 0
-rowErrors             = 0
-warningCount          = 0
-```
-
-History contained both committed batches: the original import and the zero-submission all-duplicate reimport. Live staging idempotency and batch-history preservation are therefore PASS.
+The first commit recorded five submissions and a `COMMITTED` batch. Re-submitting the identical file returned zero importable submissions and six exact duplicates, while history recorded a second `COMMITTED` batch. Live import idempotency and batch-history preservation are PASS.
 
 ## Credential lifecycle pre-staging gate
 
-Implemented server lifecycle:
+Implemented and PostgreSQL-CI validated:
 
-- ADMIN-only 24-hour one-time `PROVISION` / `RESET` token issuance;
+- ADMIN-only 24-hour `PROVISION` / `RESET` tokens;
 - only SHA-256 token hashes persisted;
-- user-selected Argon2id password activation;
-- single-use token semantics;
-- authenticated self password change;
-- self-change keeps current session and revokes all other sessions;
-- ADMIN reset immediately blocks old-password login and revokes all target sessions;
-- reset activation establishes the new password;
-- credential security events persisted separately;
-- login reset-gate and session insertion atomic under PostgreSQL credential-row locking.
+- single-use activation/reset;
+- user-selected Argon2id password;
+- self password change retaining current session and revoking other sessions;
+- ADMIN reset immediately blocking old-password login and revoking all target sessions;
+- reset activation establishing the replacement password;
+- separate credential security-event audit;
+- atomic login reset-gate/session insertion under credential-row locking.
 
-PostgreSQL 17 server suite: **28/28 PASS**. Real Coolify staging is the next gate for this slice.
+Server suite: **28/28 PASS**. Real credential staging smoke is next.
 
-## Secret hygiene
+## Secret / deployment policy
 
-- `DATABASE_URL` is runtime-only;
-- bootstrap ADMIN variables are removed;
-- PostgreSQL is private/internal;
-- Coolify auto-deploy is disabled during active M6 work;
-- the frozen local Tauri release is not pointed at staging.
+- PostgreSQL remains private/internal;
+- runtime secrets are not build-time variables;
+- bootstrap ADMIN secrets remain removed;
+- Coolify auto-deploy remains OFF during active M6;
+- frozen local Tauri release is not pointed at staging.
 
 ## Remaining M6 validation
 
-1. additional-user credential staging smoke test;
+1. additional-user credential lifecycle staging smoke;
 2. PostgreSQL backup/restore evidence;
 3. SQLite schema-v4 → PostgreSQL migration/reconciliation;
-4. secure Tauri token storage before M7 production API rollout.
+4. secure Tauri token storage before M7 production rollout.
 
-PR #15 remains draft/open until the full M6 acceptance gate passes.
+PR #15 remains draft/open until all M6 acceptance gates pass.

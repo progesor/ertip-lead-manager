@@ -5,6 +5,7 @@ mod authz;
 mod config;
 mod crm;
 mod crm_mutations;
+mod dashboard;
 mod db;
 mod followups;
 mod followups_http;
@@ -58,7 +59,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let app = router(state.clone())
         .merge(followups_http::router(state.clone()))
         .merge(pipeline::router(state.clone()))
-        .merge(analytics::router(state));
+        .merge(analytics::router(state.clone()))
+        .merge(dashboard::router(state));
 
     info!(
         bind_addr = %config.bind_addr,

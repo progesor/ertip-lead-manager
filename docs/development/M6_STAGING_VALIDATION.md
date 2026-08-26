@@ -2,7 +2,8 @@
 
 ## Status
 
-**STAGING FOUNDATION / AUTH / FOLLOW-UP / READ MODELS / MANUAL IMPORT: PASS**
+**STAGING FOUNDATION / AUTH / FOLLOW-UP / READ MODELS / MANUAL IMPORT: PASS**  
+**ADDITIONAL-USER CREDENTIAL LIFECYCLE: CODE/CI PASS, STAGING PENDING**
 
 Validation date: 2026-08-26  
 Environment: Coolify staging  
@@ -28,7 +29,7 @@ private PostgreSQL 17
 
 ## Deployment / health evidence
 
-The staging application was deployed from the M6 branch through `server/Dockerfile`.
+The staging application is deployed from the M6 branch through `server/Dockerfile`.
 
 Validated:
 
@@ -120,7 +121,24 @@ warningCount          = 0
 
 Import history then contained two committed batches for the synthetic file: the original five-submission import and the zero-submission all-duplicate reimport. This validates live staging idempotency while preserving import-batch history.
 
-No raw activation/session tokens, passwords or real lead data are recorded in this document.
+## Credential lifecycle CI checkpoint
+
+The additional-user credential lifecycle is implemented but has not yet been deployed to staging.
+
+PostgreSQL 17 integration currently validates:
+
+- ADMIN-only one-time invitation token issuance;
+- SHA-256 token-hash persistence rather than raw token storage;
+- one-use 24-hour activation token semantics;
+- user-chosen Argon2id password activation;
+- multiple sessions followed by self password change;
+- current-session retention and other-session revocation after self password change;
+- ADMIN reset revoking all sessions and blocking old-password login immediately;
+- reset activation with a new password;
+- credential security-event persistence;
+- atomic reset-gate recheck and login session creation to prevent reset/login races.
+
+The server suite passes 28/28 tests with this lifecycle included. Real staging remains the next credential gate.
 
 ## Secret hygiene
 
@@ -128,17 +146,16 @@ Current staging policy:
 
 - `DATABASE_URL` remains runtime-only;
 - bootstrap ADMIN name/e-mail/password variables are no longer present after first-account validation;
-- real database credentials, login passwords and bearer tokens are not committed;
+- real database credentials, login passwords, bearer tokens and activation/reset tokens are not committed;
 - PostgreSQL remains private/internal to Coolify;
 - Coolify auto-deploy is disabled during active M6 development so only deliberate green checkpoints are deployed;
 - the installed frozen local Tauri application is not pointed at staging during M6.
 
 ## Remaining staging validation
 
-Foundation/auth/follow-up/read-model/manual-import staging validation is complete. M6 still requires staged validation/evidence for:
+M6 still requires staged validation/evidence for:
 
 - additional-user invitation/activation/password-change/reset lifecycle;
-- representative ADMIN/MANAGER/SALES role behavior where useful;
 - PostgreSQL backup/restore;
 - SQLite schema-v4 → PostgreSQL migration/reconciliation.
 

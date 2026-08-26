@@ -6,6 +6,7 @@ mod crm;
 mod crm_mutations;
 mod db;
 mod followups;
+mod followups_http;
 
 use std::error::Error;
 
@@ -48,6 +49,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let listener = TcpListener::bind(config.bind_addr).await?;
+    let state = AppState {
+        pool,
+        session_ttl_hours: config.session_ttl_hours,
+    };
+    let app = router(state.clone()).merge(followups_http::router(state));
 
     info!(
         bind_addr = %config.bind_addr,
@@ -56,15 +62,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         "starting Ertip Lead Manager API"
     );
 
-    axum::serve(
-        listener,
-        router(AppState {
-            pool,
-            session_ttl_hours: config.session_ttl_hours,
-        }),
-    )
-    .with_graceful_shutdown(shutdown_signal())
-    .await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
 
     Ok(())
 }

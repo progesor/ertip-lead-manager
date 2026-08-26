@@ -11,7 +11,7 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{PgPool, Postgres, Row, Transaction};
-use tempfile::{Builder, NamedTempFile};
+use tempfile::Builder;
 use thiserror::Error;
 use tower_http::{
     request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
@@ -999,7 +999,7 @@ mod tests {
         cleanup(&pool).await;
 
         let manager_id = "m6-import-manager";
-        sqlx::query("DELETE FROM auth_credentials WHERE app_user_id = $1")
+        sqlx::query("DELETE FROM app_credentials WHERE user_id = $1")
             .bind(manager_id).execute(&pool).await.expect("cleanup credential");
         sqlx::query("DELETE FROM app_users WHERE id = $1")
             .bind(manager_id).execute(&pool).await.expect("cleanup manager");

@@ -28,6 +28,7 @@ pub enum Action {
     LeadRead,
     LeadStatusUpdate,
     LeadContentUpdate,
+    ImportManage,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,7 +79,7 @@ pub fn is_allowed(role: Role, action: Action) -> bool {
     match action {
         Action::PersonnelRead => matches!(role, Role::Admin | Role::Manager),
         Action::PersonnelManage => matches!(role, Role::Admin),
-        Action::LeadAssign => matches!(role, Role::Admin | Role::Manager),
+        Action::LeadAssign | Action::ImportManage => matches!(role, Role::Admin | Role::Manager),
         Action::LeadRead | Action::LeadStatusUpdate | Action::LeadContentUpdate => {
             matches!(role, Role::Admin | Role::Manager | Role::Sales)
         }
@@ -94,17 +95,20 @@ mod tests {
         assert!(is_allowed(Role::Admin, Action::PersonnelManage));
         assert!(is_allowed(Role::Admin, Action::LeadAssign));
         assert!(is_allowed(Role::Admin, Action::LeadContentUpdate));
+        assert!(is_allowed(Role::Admin, Action::ImportManage));
 
         assert!(is_allowed(Role::Manager, Action::PersonnelRead));
         assert!(!is_allowed(Role::Manager, Action::PersonnelManage));
         assert!(is_allowed(Role::Manager, Action::LeadAssign));
         assert!(is_allowed(Role::Manager, Action::LeadContentUpdate));
+        assert!(is_allowed(Role::Manager, Action::ImportManage));
 
         assert!(!is_allowed(Role::Sales, Action::PersonnelRead));
         assert!(!is_allowed(Role::Sales, Action::LeadAssign));
         assert!(is_allowed(Role::Sales, Action::LeadRead));
         assert!(is_allowed(Role::Sales, Action::LeadStatusUpdate));
         assert!(is_allowed(Role::Sales, Action::LeadContentUpdate));
+        assert!(!is_allowed(Role::Sales, Action::ImportManage));
     }
 
     #[test]

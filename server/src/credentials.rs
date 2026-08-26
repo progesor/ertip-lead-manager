@@ -233,8 +233,6 @@ impl CredentialService {
         .await?;
 
         let response_revision = if purpose == TokenPurpose::Reset {
-            // Keep the credential row so login and reset can synchronize on the same row,
-            // but close the login gate immediately and revoke every existing session.
             sqlx::query(
                 r#"
                 UPDATE app_credentials
@@ -792,7 +790,8 @@ async fn change_password(
     headers: HeaderMap,
     Json(request): Json<ChangePasswordRequest>,
 ) -> Result<Response, ApiHttpError> {
-    let token = session_token_from_headers(&headers).ok_or(AuthError::Unauthorized)?;
+    let token = session_token_from_headers(&headers)
+        .ok_or(CredentialError::Auth(AuthError::Unauthorized))?;
     let session = AuthService::new(state.pool.clone(), state.session_ttl_hours)
         .resolve(&token)
         .await
@@ -807,7 +806,8 @@ async fn authenticated_actor(
     state: &AppState,
     headers: &HeaderMap,
 ) -> Result<Actor, ApiHttpError> {
-    let token = session_token_from_headers(headers).ok_or(AuthError::Unauthorized)?;
+    let token = session_token_from_headers(headers)
+        .ok_or(CredentialError::Auth(AuthError::Unauthorized))?;
     let session = AuthService::new(state.pool.clone(), state.session_ttl_hours)
         .resolve(&token)
         .await

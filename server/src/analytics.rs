@@ -629,7 +629,7 @@ mod tests {
             ("m6-analytics-a2", "m6-analytics-a", "m6:analytics:a2", "2099-01-02T10:00:00Z", "instagram", "cmp-a", "Campaign A"),
             ("m6-analytics-b1", "m6-analytics-b", "m6:analytics:b1", "2099-01-02T11:00:00Z", "facebook", "cmp-b", "Campaign B"),
         ] {
-            sqlx::query("INSERT INTO lead_submissions (id, lead_contact_id, import_batch_id, external_lead_id, source_created_at_utc, source_created_at_raw, platform, campaign_id, campaign_name, raw_payload_json, created_at) VALUES ($1, $2, 'm6-analytics-batch', $3, $4, $4, $5, $6, $7, '{}', $4)")
+            sqlx::query("INSERT INTO lead_submissions (id, lead_contact_id, import_batch_id, external_lead_id, source_created_at_utc, source_created_at_raw, platform, campaign_id, campaign_name, raw_payload_json, created_at) VALUES ($1, $2, 'm6-analytics-batch', $3, $4::timestamptz, $4, $5, $6, $7, '{}', $4::timestamptz)")
                 .bind(id).bind(contact).bind(external).bind(ts).bind(platform).bind(campaign).bind(campaign_name)
                 .execute(&pool).await.expect("seed submission");
         }

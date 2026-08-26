@@ -8,27 +8,22 @@
 Environment: `lead-api-staging.progesor.net` on Coolify + private PostgreSQL 17.  
 Source branch: `feat/m6-central-backend-foundation`.
 
-This record excludes passwords, database connection strings, raw bearer tokens, raw invitation/reset tokens and real customer PII.
+This evidence intentionally excludes passwords, connection strings, raw bearer tokens, raw invitation/reset tokens and real customer PII.
 
-## Live staging evidence
-
-Validated:
+## Proven live-staging checkpoints
 
 - Cloudflare HTTPS → Coolify API → private PostgreSQL;
-- rolling deploy and PostgreSQL-backed `/health/ready`;
-- first ADMIN bootstrap;
-- HTTPS bearer login + `/me`;
-- logout 204 + revoked-token 401;
-- bootstrap environment variables removed;
-- healthy redeploy and persisted ADMIN login without bootstrap secrets;
+- rolling deploy + custom `/health/ready` PostgreSQL dependency check;
+- first ADMIN bootstrap, HTTPS bearer login, `/me`, logout 204, revoked-token 401;
+- bootstrap environment variables removed, healthy redeploy, persisted ADMIN login;
 - synthetic follow-up create/list/reschedule/stale-409/complete;
-- pipeline all 8 statuses, `perColumnLimit=100`, synthetic lead in `NEW`;
-- analytics expected zero-submission result with all 8 funnel buckets;
+- pipeline all eight statuses, `perColumnLimit=100`, synthetic lead in `NEW`;
+- analytics expected zero-submission result with all eight funnel buckets;
 - dashboard total/new KPI = 1 and synthetic lead in `newUncontacted`.
 
 ## Manual import live staging
 
-A six-row synthetic UTF-8 CSV produced on preview and first commit:
+A generated six-row synthetic UTF-8 CSV produced on preview and first commit:
 
 ```text
 totalRows             = 6

@@ -24,6 +24,7 @@ impl Role {
 pub enum Action {
     PersonnelRead,
     PersonnelManage,
+    CredentialManage,
     LeadAssign,
     LeadRead,
     LeadStatusUpdate,
@@ -78,7 +79,7 @@ pub enum AuthorizationError {
 pub fn is_allowed(role: Role, action: Action) -> bool {
     match action {
         Action::PersonnelRead => matches!(role, Role::Admin | Role::Manager),
-        Action::PersonnelManage => matches!(role, Role::Admin),
+        Action::PersonnelManage | Action::CredentialManage => matches!(role, Role::Admin),
         Action::LeadAssign | Action::ImportManage => matches!(role, Role::Admin | Role::Manager),
         Action::LeadRead | Action::LeadStatusUpdate | Action::LeadContentUpdate => {
             matches!(role, Role::Admin | Role::Manager | Role::Sales)
@@ -93,17 +94,20 @@ mod tests {
     #[test]
     fn role_policy_matches_m6_contract() {
         assert!(is_allowed(Role::Admin, Action::PersonnelManage));
+        assert!(is_allowed(Role::Admin, Action::CredentialManage));
         assert!(is_allowed(Role::Admin, Action::LeadAssign));
         assert!(is_allowed(Role::Admin, Action::LeadContentUpdate));
         assert!(is_allowed(Role::Admin, Action::ImportManage));
 
         assert!(is_allowed(Role::Manager, Action::PersonnelRead));
         assert!(!is_allowed(Role::Manager, Action::PersonnelManage));
+        assert!(!is_allowed(Role::Manager, Action::CredentialManage));
         assert!(is_allowed(Role::Manager, Action::LeadAssign));
         assert!(is_allowed(Role::Manager, Action::LeadContentUpdate));
         assert!(is_allowed(Role::Manager, Action::ImportManage));
 
         assert!(!is_allowed(Role::Sales, Action::PersonnelRead));
+        assert!(!is_allowed(Role::Sales, Action::CredentialManage));
         assert!(!is_allowed(Role::Sales, Action::LeadAssign));
         assert!(is_allowed(Role::Sales, Action::LeadRead));
         assert!(is_allowed(Role::Sales, Action::LeadStatusUpdate));

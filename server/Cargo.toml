@@ -1,0 +1,26 @@
+[package]
+name = "ertip-lead-manager-server"
+version = "0.1.0"
+edition = "2024"
+description = "Centralized API and authentication server for Ertip Lead Manager"
+authors = ["Ertip Medical"]
+
+[dependencies]
+argon2 = "0.5"
+axum = { version = "0.8", features = ["multipart"] }
+calamine = "0.31"
+chrono = { version = "0.4", features = ["serde"] }
+csv = "1.4"
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "sqlite", "migrate", "macros", "chrono"] }
+tempfile = "3"
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["request-id", "trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+uuid = { version = "1", features = ["v4"] }

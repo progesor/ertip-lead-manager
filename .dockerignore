@@ -1,0 +1,15 @@
+.git
+.github
+node_modules
+dist
+src-tauri/target
+server/target
+*.sqlite
+*.sqlite3
+*.db
+*.xlsx
+*.xls
+*.csv
+.env
+.env.*
+!.env.example

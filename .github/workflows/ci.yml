@@ -43,10 +43,47 @@ jobs:
       - name: Cargo tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
 
+  server:
+    name: Server tests (Linux + PostgreSQL 17)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: elm
+          POSTGRES_PASSWORD: elm
+          POSTGRES_DB: elm_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U elm -d elm_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      ELM_TEST_DATABASE_URL: postgres://elm:elm@localhost:5432/elm_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+      - name: Server cargo tests and PostgreSQL migration gate
+        run: cargo test --manifest-path server/Cargo.toml -- --test-threads=1
+
+  server-container:
+    name: Server container build
+    runs-on: ubuntu-latest
+    needs: [server]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Coolify server image
+        run: docker build -f server/Dockerfile -t ertip-lead-manager-server:ci .
+
   windows-package:
     name: Tauri debug package (Windows)
     runs-on: windows-latest
-    needs: [frontend, rust]
+    needs: [frontend, rust, server]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

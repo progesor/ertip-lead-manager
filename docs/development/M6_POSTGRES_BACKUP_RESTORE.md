@@ -126,8 +126,9 @@ ls -lh "$BACKUP"
 printf 'Archive entries: '
 pg_restore --list "$BACKUP" | wc -l
 
-# Restore only into a new disposable database.
-createdb -U "$PGUSER" "$RESTORE_DB"
+# Restore only into a new disposable database. Use the known source DB as the
+# maintenance connection instead of assuming a database named after PGUSER exists.
+createdb -U "$PGUSER" --maintenance-db "$SRC_DB" "$RESTORE_DB"
 pg_restore \
   --exit-on-error \
   --no-acl \
@@ -159,7 +160,7 @@ psql -X -v ON_ERROR_STOP=1 -U "$PGUSER" -d "$RESTORE_DB" \
 printf '\nBACKUP_RESTORE_SMOKE=PASS\n'
 
 # Cleanup only the disposable restore database and temporary smoke artifacts.
-dropdb -U "$PGUSER" "$RESTORE_DB"
+dropdb -U "$PGUSER" --maintenance-db "$SRC_DB" "$RESTORE_DB"
 rm -f "$FP_SQL" "$SOURCE_FP" "$RESTORE_FP" "$BACKUP"
 ```
 

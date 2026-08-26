@@ -9,7 +9,7 @@ use sqlx::{PgPool, Row};
 use thiserror::Error;
 use uuid::Uuid;
 
-use crate::{config::BootstrapAdmin, db::run_migrations};
+use crate::config::BootstrapAdmin;
 
 const MAX_FAILED_ATTEMPTS: i32 = 5;
 
@@ -331,7 +331,7 @@ pub async fn bootstrap_admin(
     Ok(BootstrapStatus::Created(user_id))
 }
 
-fn hash_password(password: &str) -> Result<String, AuthError> {
+pub(crate) fn hash_password(password: &str) -> Result<String, AuthError> {
     let salt = SaltString::encode_b64(Uuid::new_v4().as_bytes())
         .map_err(|_| AuthError::PasswordHash)?;
     Argon2::default()
@@ -340,7 +340,7 @@ fn hash_password(password: &str) -> Result<String, AuthError> {
         .map_err(|_| AuthError::PasswordHash)
 }
 
-fn verify_password(password: &str, encoded: &str) -> bool {
+pub(crate) fn verify_password(password: &str, encoded: &str) -> bool {
     let Ok(parsed) = PasswordHash::new(encoded) else {
         return false;
     };

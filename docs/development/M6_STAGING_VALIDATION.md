@@ -2,7 +2,7 @@
 
 ## Status
 
-**STAGING FOUNDATION / AUTH: PASS**
+**STAGING FOUNDATION / AUTH / FOLLOW-UP: PASS**
 
 Validation date: 2026-08-26  
 Environment: Coolify staging  
@@ -59,6 +59,23 @@ Validated:
 
 This proves the bootstrap variables are initial-provisioning material only. The persisted PostgreSQL user/credential remains authoritative after the bootstrap secrets are removed.
 
+## Follow-up API staging validation
+
+The PostgreSQL-backed follow-up HTTP slice was redeployed after its CI gate passed. A synthetic staging-only lead was used; no customer data was required.
+
+Validated:
+
+- authenticated ADMIN access to follow-up routes;
+- create follow-up in `OPEN` state;
+- list follow-ups for a lead;
+- reschedule with revision increment;
+- stale `expectedRevision` rejection with HTTP `409`;
+- complete transition to `COMPLETED`;
+- final list reflects the terminal state;
+- staging remained healthy through the deployment and smoke test.
+
+This closes the M6 follow-up API slice across service tests, HTTP wiring, PostgreSQL 17 CI and real Coolify staging.
+
 ## Secret hygiene
 
 Current staging policy:
@@ -67,20 +84,19 @@ Current staging policy:
 - bootstrap ADMIN name/e-mail/password variables are no longer present after first-account validation;
 - real database credentials, login passwords and bearer tokens are not committed;
 - PostgreSQL remains private/internal to Coolify;
+- Coolify auto-deploy is disabled during active M6 development so only deliberate green checkpoints are deployed;
 - the installed frozen local Tauri application is not pointed at staging during M6.
 
 ## Remaining staging validation
 
-Foundation/auth staging validation is complete. M6 still requires staged validation of later API slices, including:
+Foundation/auth/follow-up staging validation is complete. M6 still requires staged validation of later API slices, including:
 
 - personnel and role-policy smoke tests with representative users;
 - assignment/status operations;
 - notes and product-interest overrides;
-- follow-up API after its HTTP slice passes CI and is redeployed;
-- stale-revision conflict behavior;
 - SALES assigned-only visibility/mutation behavior;
 - pipeline/dashboard/analytics and import parity when implemented;
 - PostgreSQL backup/restore evidence;
 - SQLite schema-v4 → PostgreSQL migration/reconciliation evidence.
 
-Passing this checkpoint does not close M6 or authorize switching the production Tauri client to API mode. That remains an M7 action after the complete M6 acceptance gate.
+Passing these checkpoints does not close M6 or authorize switching the production Tauri client to API mode. That remains an M7 action after the complete M6 acceptance gate.

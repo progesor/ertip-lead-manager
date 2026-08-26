@@ -1,3 +1,4 @@
+mod analytics;
 mod app;
 mod auth;
 mod authz;
@@ -56,7 +57,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
     let app = router(state.clone())
         .merge(followups_http::router(state.clone()))
-        .merge(pipeline::router(state));
+        .merge(pipeline::router(state.clone()))
+        .merge(analytics::router(state));
 
     info!(
         bind_addr = %config.bind_addr,

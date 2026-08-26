@@ -27,7 +27,7 @@ ELM_BOOTSTRAP_ADMIN_EMAIL=admin@example.com
 ELM_BOOTSTRAP_ADMIN_PASSWORD=<long random secret>
 ```
 
-The e-mail and password variables must be configured together. The password must be 12–128 characters. Bootstrap applies only when `app_users` is empty and never resets an existing user's password. Remove the bootstrap password secret after the initial ADMIN has been created successfully.
+The e-mail and password variables must be configured together. The password must be 12–128 characters. Bootstrap applies only when `app_users` is empty and never resets an existing user's password. Remove all bootstrap ADMIN variables after the initial ADMIN has been created and validated.
 
 Run:
 
@@ -47,11 +47,76 @@ POST /api/v1/auth/login/tauri
 POST /api/v1/auth/login/web
 POST /api/v1/auth/logout
 GET  /api/v1/me
+
+POST /api/v1/personnel/{userId}/auth/invitation
+POST /api/v1/personnel/{userId}/auth/reset
+POST /api/v1/auth/activate
+POST /api/v1/auth/change-password
 ```
 
-`/health/live` proves the process/router is alive. `/health/ready` performs a PostgreSQL `SELECT 1` and returns a non-200 response when the database is not available.
+`/health/live` proves the process/router is alive. `/health/ready` performs a PostgreSQL `SELECT 1` and returns a non-200 response when the database is unavailable.
 
-Tauri login returns an opaque session token that is sent as `Authorization: Bearer <token>`. Only its SHA-256 hash is stored server-side. Web login uses the same credentials but returns the session through a `Secure; HttpOnly; SameSite=Lax` cookie. Passwords are stored as Argon2id hashes and repeated failed logins trigger the database-backed temporary lock policy.
+Tauri login returns an opaque session token sent as `Authorization: Bearer <token>`. Only its SHA-256 hash is stored server-side. Web login uses the same credentials but returns the session through a `Secure; HttpOnly; SameSite=Lax` cookie. Passwords are stored as Argon2id hashes and repeated failed logins trigger the database-backed temporary lock policy.
+
+### Additional-user credential lifecycle
+
+Personnel records are CRM identities first. Creating personnel does not invent or expose a permanent password.
+
+Only `ADMIN` may start credential invitation or reset. Both operations accept the latest personnel `expectedRevision`.
+
+Invitation:
+
+```text
+POST /api/v1/personnel/{userId}/auth/invitation
+{
+  "expectedRevision": 0
+}
+```
+
+Requirements:
+
+- target personnel is active;
+- target has an e-mail address;
+- target does not already have credentials.
+
+The server returns a random one-time `PROVISION` token with a 24-hour expiry. Only the SHA-256 token hash is persisted. The raw token is returned once and should be delivered through a trusted channel; M6 does not send e-mail itself.
+
+The user establishes their password through the unauthenticated token endpoint:
+
+```text
+POST /api/v1/auth/activate
+{
+  "token": "<one-time token>",
+  "password": "<12-128 character password>"
+}
+```
+
+The token is single-use. Activation Argon2-hashes the chosen password, enables credential login, records a security event and increments personnel revision.
+
+ADMIN reset:
+
+```text
+POST /api/v1/personnel/{userId}/auth/reset
+{
+  "expectedRevision": <current personnel revision>
+}
+```
+
+Starting a reset immediately closes the old-password login gate, clears failed-login lock state, revokes every active session for the target user, revokes prior unused one-time tokens, increments personnel revision and returns a new 24-hour `RESET` token. The user completes the reset through the same `/api/v1/auth/activate` endpoint with a new password.
+
+The login reset-gate recheck and session creation are atomic under a PostgreSQL credential-row lock. A reset therefore cannot race an already-verified old-password login into creating a late valid session.
+
+Authenticated users may change their own password:
+
+```text
+POST /api/v1/auth/change-password
+{
+  "currentPassword": "...",
+  "newPassword": "..."
+}
+```
+
+A successful self-change keeps the current session valid but revokes every other active session for that user. It also revokes unused activation/reset tokens. Security events are stored separately from CRM lead activities.
 
 ## Current `/api/v1` CRM surface
 
@@ -89,9 +154,9 @@ GET  /api/v1/imports/history?limit=20
 
 ### Authorization policy
 
-- `ADMIN`: personnel administration, all current CRM operations/read models and manual imports.
-- `MANAGER`: personnel read, CRM operations/read models across all leads and manual imports; cannot create/update/deactivate personnel.
-- `SALES`: CRM reads and edits only for leads currently assigned to their own user ID. SALES cannot manage personnel, reassign leads or run manual imports.
+- `ADMIN`: personnel administration, credential lifecycle, all current CRM operations/read models and manual imports.
+- `MANAGER`: personnel read, CRM operations/read models across all leads and manual imports; cannot mutate personnel or administer credentials.
+- `SALES`: CRM reads and edits only for leads currently assigned to their own user ID. SALES cannot manage personnel, reassign leads, administer credentials or run manual imports.
 
 SALES scope is enforced inside PostgreSQL queries/mutations rather than only in UI filtering. Out-of-scope lead detail/mutations do not disclose another salesperson's lead.
 
@@ -99,7 +164,7 @@ SALES scope is enforced inside PostgreSQL queries/mutations rather than only in 
 
 Mutable personnel, assignment, lead-status and product-interest requests carry `expectedRevision`; notes and follow-ups use their own resource revision. Stale writes return HTTP `409` with `error.code = STALE_REVISION`.
 
-Activities created by centralized mutations use the authenticated session user as `actor_user_id`. Scoped writes hold the contact row as needed so assignment changes cannot race between authorization and mutation.
+Activities created by centralized CRM mutations use the authenticated session user as `actor_user_id`. Credential invitation/reset/change events are stored in `auth_security_events` with target and actor identities where applicable.
 
 Current stable lead statuses are `NEW`, `CONTACTED`, `REPLIED`, `QUALIFIED`, `QUOTE_SENT`, `WON`, `LOST`, `INVALID`.
 
@@ -123,7 +188,7 @@ For SALES callers all three read models are scoped server-side to leads currentl
 
 ## Manual import API
 
-Manual import parity accepts real source files; clients do not submit pre-normalized lead JSON. The server parses and validates the uploaded source using the canonical import rules.
+Manual import accepts real source files; clients do not submit pre-normalized lead JSON. The server parses and validates the upload using the canonical import rules.
 
 Supported input:
 
@@ -142,15 +207,13 @@ email
 phone_number
 ```
 
-Preview example:
+Preview is read-only:
 
 ```text
 POST /api/v1/imports/preview
 Content-Type: multipart/form-data
 file=<CSV or XLSX>
 ```
-
-Preview is read-only. It returns row decisions and totals for new contacts, repeat submissions, exact duplicate submissions, identity conflicts, row errors and normalization warnings.
 
 Commit uses the same multipart contract:
 
@@ -161,21 +224,17 @@ POST /api/v1/imports/commit
 Important commit guarantees:
 
 - the file is parsed and the identity plan is rebuilt at commit time; preview output is never trusted as commit authority;
-- PostgreSQL transaction-level advisory locking serializes manual imports so concurrent users cannot race the same identity/duplicate snapshot;
-- identity conflicts or row errors block and roll back the whole commit;
+- PostgreSQL transaction-level advisory locking serializes manual imports;
+- identity conflicts or row errors roll back the whole commit;
 - exact duplicate external submission IDs are skipped;
 - importing the same file again is idempotent for submissions while still recording import-batch history;
-- repeat submissions do not overwrite the lead's current CRM status;
-- `Status` and `İletişime Geçme Tarihi` agency columns remain in immutable raw payload only and are not treated as CRM status/contact-date inputs;
-- raw source payload, normalized identities, product interests and data-quality warnings are preserved in PostgreSQL;
+- repeat submissions do not overwrite current CRM status;
+- `Status` and `İletişime Geçme Tarihi` agency columns remain in immutable raw payload only;
+- raw source payload, normalized identities, product interests and data-quality warnings are preserved;
 - `LEAD_CREATED` and `SUBMISSION_IMPORTED` activities use the authenticated ADMIN/MANAGER actor;
 - contact aggregate revision increments when an import updates contact-derived fields/submission count.
 
 `GET /api/v1/imports/history` exposes recent committed batch summaries. SALES callers are rejected for preview, commit and history.
-
-## Personnel authentication state
-
-Creating a personnel record creates the stable `app_users` CRM identity but does not yet automatically issue a password. Personnel responses expose `authEnabled` so ADMIN can distinguish CRM identity from credential-enabled login identity. Additional-user credential provisioning/invitation/reset remains a later M6 authentication slice.
 
 ## Docker / Coolify
 
@@ -198,4 +257,4 @@ Do not expose PostgreSQL credentials to Tauri/Web clients.
 
 ## Current M6 boundary
 
-Foundation, PostgreSQL schema, authentication/RBAC, personnel/assignment, lead CRM operations, notes, product overrides, follow-ups, pipeline/dashboard/analytics and manual import server parity are implemented. Foundation/auth/follow-up and pipeline/dashboard/analytics have passed real Coolify staging checkpoints; manual import still requires its deliberate staging smoke test. Remaining M6 work includes additional-user credential provisioning, PostgreSQL backup/restore evidence, SQLite schema-v4 → PostgreSQL migration/reconciliation and secure Tauri token storage before the M7 production API switch. The frozen local Tauri build remains independent throughout M6.
+Foundation, PostgreSQL schema, authentication/RBAC, personnel/assignment, lead CRM operations, notes, product overrides, follow-ups, pipeline/dashboard/analytics, manual import parity and the additional-user credential lifecycle are implemented. Foundation/auth/follow-up, pipeline/dashboard/analytics and manual import have passed real Coolify staging checkpoints. The additional-user credential lifecycle still requires its deliberate staging smoke test. Remaining M6 work after that includes PostgreSQL backup/restore evidence, SQLite schema-v4 → PostgreSQL migration/reconciliation and secure Tauri token storage before the M7 production API switch. The frozen local Tauri build remains independent throughout M6.

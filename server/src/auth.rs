@@ -145,30 +145,35 @@ impl AuthService {
             return Err(AuthError::InvalidCredentials);
         }
 
-        // Re-check the reset gate atomically after password verification. If an ADMIN
-        // started a reset while verification was running, no new session may be issued.
-        let credential_update = sqlx::query(
-            "UPDATE app_credentials SET failed_attempts = 0, locked_until = NULL, updated_at = now() WHERE user_id = $1 AND must_change_password = FALSE",
-        )
-        .bind(&user_id)
-        .execute(&self.pool)
-        .await?;
-        if credential_update.rows_affected() == 0 {
-            return Err(AuthError::InvalidCredentials);
-        }
-
         let user = AuthUser {
             id: user_id.clone(),
             display_name: row.try_get("display_name")?,
             email: row.try_get("email")?,
             role: row.try_get("role")?,
         };
-
         let raw_token = new_session_token();
         let session_id = Uuid::new_v4().to_string();
         let token_hash = hash_session_token(&raw_token);
         let now = Utc::now();
         let expires_at = now + Duration::hours(self.session_ttl_hours);
+
+        // Reset-gate recheck and session creation share one transaction. Updating the
+        // credential row holds its row lock through session insertion, so an ADMIN reset
+        // either happens first (and blocks this login) or happens after and revokes the
+        // session created here. There is no gap where a reset can be followed by a late
+        // session insert authenticated with the old password.
+        let mut tx = self.pool.begin().await?;
+        let credential_update = sqlx::query(
+            "UPDATE app_credentials SET failed_attempts = 0, locked_until = NULL, updated_at = $2 WHERE user_id = $1 AND must_change_password = FALSE",
+        )
+        .bind(&user_id)
+        .bind(now)
+        .execute(&mut *tx)
+        .await?;
+        if credential_update.rows_affected() == 0 {
+            tx.rollback().await?;
+            return Err(AuthError::InvalidCredentials);
+        }
 
         sqlx::query(
             r#"
@@ -184,8 +189,9 @@ impl AuthService {
         .bind(client_kind.as_str())
         .bind(now)
         .bind(expires_at)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+        tx.commit().await?;
 
         Ok(LoginSession {
             session_id,

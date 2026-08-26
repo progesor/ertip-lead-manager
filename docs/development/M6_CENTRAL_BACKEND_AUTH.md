@@ -11,7 +11,7 @@
 
 ## Goal
 
-Create the authoritative multi-user backend for Ertip Lead Manager without rewriting or weakening the CRM identity/source/audit rules proven by the local application.
+Create the authoritative multi-user backend for Ertip Lead Manager without weakening the CRM identity/source/audit rules proven by the frozen local application.
 
 ## Target topology
 
@@ -22,164 +22,150 @@ Future Web ────┘                         │
                                         └── Coolify private network
 ```
 
-PostgreSQL is never a public/client-facing service. Tauri and Web receive only HTTPS API credentials/session material.
+PostgreSQL is never client-facing. Tauri and Web receive only HTTPS API/session material.
 
-## Technology decisions
+## Technology and authentication decisions
 
-- Backend runtime: Rust.
-- HTTP framework: Axum.
-- Persistence: PostgreSQL through SQLx.
-- Async runtime: Tokio.
-- Structured logging: `tracing` / `tracing-subscriber`.
-- API namespace: `/api/v1`.
-- Container deployment: Dockerfile compatible with Coolify.
-- Local fallback remains Tauri + SQLite schema v4 and is frozen independently.
+- Rust + Axum backend, Tokio runtime;
+- PostgreSQL through SQLx;
+- structured logging through `tracing`;
+- `/api/v1` shared API namespace;
+- Coolify/Docker deployment;
+- local Tauri + SQLite schema-v4 fallback remains frozen independently;
+- server-side opaque sessions rather than client-supplied actor IDs;
+- Web transport: Secure + HttpOnly + SameSite=Lax cookie;
+- Tauri transport: opaque bearer session, with secure OS-backed storage required before M7 production rollout;
+- Argon2id credentials;
+- only SHA-256 session-token hashes persisted;
+- five failed password attempts trigger temporary DB-backed lock;
+- one-time first-ADMIN bootstrap from runtime secrets.
 
-Using Rust on both sides is intentional. Existing local service/domain rules can be extracted toward shared crates incrementally instead of being translated into a second language and drifting.
+Additional personnel created through CRM API are stable identities but credential provisioning/invitation/reset for additional users remains an M6 task.
 
-## Authentication decision
-
-Use **server-side sessions** with opaque random session secrets rather than treating client-provided user IDs as identity.
-
-Implemented transport:
-
-- Web: Secure + HttpOnly + SameSite=Lax session cookie.
-- Tauri: opaque bearer session token; secure OS-backed client storage is completed in M7 before production rollout.
-
-Session records live server-side and support expiry/revocation. Only the SHA-256 hash of the raw session token is persisted. The API resolves the authenticated CRM user from the session and derives `actor_user_id` itself.
-
-Password credentials use Argon2id hashes. Five failed password attempts trigger a temporary database-backed account lock. An empty deployment can create one initial ADMIN from Coolify/runtime bootstrap secrets; the bootstrap password should be removed after that account exists.
-
-Additional personnel created through the current CRM API are stable CRM identities but do not yet receive credentials automatically. API personnel DTOs expose `authEnabled`; additional-user credential provisioning/invitation remains an M6 task.
-
-## Authorization policy — implemented baseline
-
-Stable roles:
-
-- `ADMIN`
-- `MANAGER`
-- `SALES`
-
-Current server policy:
+## Authorization policy
 
 | Capability | ADMIN | MANAGER | SALES |
 | --- | --- | --- | --- |
 | Read personnel | Yes | Yes | No |
-| Create/update/deactivate personnel | Yes | No | No |
+| Mutate personnel | Yes | No | No |
 | Read all leads | Yes | Yes | No |
 | Read assigned own leads | Yes | Yes | Yes |
 | Assign/unassign leads | Yes | Yes | No |
-| Change lead status | Yes | Yes | Assigned own leads only |
-| Create/update/delete notes | Yes | Yes | Assigned own leads only |
-| Change product interests | Yes | Yes | Assigned own leads only |
+| Status/notes/products/follow-ups | Yes | Yes | Assigned own leads only |
+| Pipeline/dashboard/analytics | All | All | Assigned own leads only |
+| Manual import | Yes | Yes | No |
 
-`SALES` lead visibility and edit scope are enforced by PostgreSQL-backed server services, not only frontend filtering. Attempting to request unassigned leads or another person's assignee filter is forbidden. Detail/mutation access outside the salesperson's assignment scope does not disclose another lead.
+SALES scope is enforced inside PostgreSQL-backed services/queries rather than only in UI. Out-of-scope detail/mutations do not disclose another salesperson's lead.
 
-The current ADMIN is prevented from demoting or deactivating its own account through the personnel API.
+## Identity / source / audit invariants
 
-## Identity and audit invariants
-
-These rules survive SQLite → PostgreSQL:
-
-- `external_lead_id` remains unique submission identity.
-- contact matching remains conservative; never merge only on name.
-- immutable source submission/raw payload values remain recoverable.
-- application UUID/stable IDs are preserved during migration.
-- personnel IDs remain stable.
-- status, notes, product overrides, follow-ups and assignment mutations create auditable activity.
-- authenticated audit actor comes from server session, never request JSON.
-
-Implemented mutations persist `ASSIGNEE_CHANGED`, `STATUS_CHANGED`, `NOTE_CREATED`, `NOTE_UPDATED`, `NOTE_DELETED` and `PRODUCT_INTEREST_CHANGED` with the authenticated actor ID.
-
-Manual product-interest decisions remain append-only. The latest override is applied over the automatic submission-derived product set, matching the proven local behavior.
+- `external_lead_id` remains unique submission identity;
+- contact matching remains conservative and never merges on name alone;
+- immutable source/raw values remain recoverable;
+- stable application/personnel IDs remain migration targets;
+- agency `Status` and `İletişime Geçme Tarihi` remain raw import fields rather than CRM inputs;
+- manual product decisions remain append-only over automatic submission-derived interests;
+- centralized activities derive `actor_user_id` from authenticated session;
+- status, assignment, notes, products and follow-ups remain auditable.
 
 ## Concurrency implementation
 
-Centralized mutable CRM state uses persisted `revision` values.
+Centralized mutable CRM state uses persisted revisions and explicit locking:
 
-Current personnel update/deactivation, lead assignment, lead-status and product-interest mutation contracts carry `expectedRevision`. Writes are checked against the current persisted revision and successful aggregate changes increment it. Notes use their own `lead_notes.revision` for update/delete. A stale request receives HTTP `409` with `STALE_REVISION` instead of overwriting a newer update.
-
-Scoped note writes hold a shared lock on the contact row for the duration of the mutation. Assignment/product aggregate writes use an update lock. This closes the authorization race where a SALES user could otherwise pass an assignment check immediately before another transaction reassigns the lead.
-
-This revision/locking pattern must be applied to the remaining mutable CRM resources as their API slices are implemented.
+- personnel/assignment/status/product aggregate requests use `expectedRevision`;
+- notes and follow-ups use resource-level revisions;
+- stale writes return HTTP `409` / `STALE_REVISION`;
+- scoped note/follow-up writes lock the lead while SALES assignment authorization is checked;
+- assignment/product aggregate writes use update locking;
+- manual import uses a PostgreSQL transaction advisory lock so concurrent import commits cannot plan against the same identity snapshot.
 
 ## M6 slices
 
 ### M6.1 — Server foundation
 
 - [x] standalone `server/` Rust crate;
-- [x] typed environment configuration;
+- [x] typed runtime configuration;
 - [x] `/health/live`;
-- [x] `/health/ready` with PostgreSQL check;
-- [x] structured logging;
-- [x] standard JSON API error envelope baseline;
+- [x] PostgreSQL-backed `/health/ready`;
+- [x] structured logging and graceful shutdown;
+- [x] JSON API error baseline;
 - [x] Coolify-ready Dockerfile;
-- [x] server CI gate while preserving existing Tauri CI.
+- [x] PostgreSQL 17 CI while preserving frozen local/frontend gates;
+- [x] real Coolify staging deployment.
 
 ### M6.2 — PostgreSQL canonical schema
 
-- [x] PostgreSQL migrations for canonical entities;
-- [x] constraints/indexes matching proven SQLite semantics;
-- [x] authentication/session tables;
-- [x] migration tests on an empty real PostgreSQL 17 database;
+- [x] canonical migrations and integrity constraints;
+- [x] authentication/session schema;
+- [x] migration tests against real PostgreSQL 17;
 - [x] DB readiness check;
-- [ ] complete PostgreSQL adapters/API parity for every CRM domain;
-- [ ] backup/restore runbook.
+- [x] PostgreSQL service/API parity for current CRM, follow-up, read-model and manual-import domains;
+- [ ] backup/restore runbook + evidence.
 
-### M6.3 — Authentication and authorization
+### M6.3 — Authentication / authorization
 
-- [x] one-time first-ADMIN credential/bootstrap flow;
+- [x] first-ADMIN bootstrap;
 - [x] login/logout/current-session;
-- [x] opaque session creation/expiry/revocation;
+- [x] opaque session expiry/revocation;
 - [x] cookie + bearer extraction;
-- [x] `app_users` authenticated identity binding;
+- [x] `app_users` identity binding;
 - [x] server-derived actor context;
-- [x] ADMIN / MANAGER / SALES role-policy tests;
-- [x] login abuse baseline through database-backed temporary account lock;
-- [ ] additional-user credential provisioning/invitation/reset flow;
-- [ ] secure Tauri client token storage (M7 production switch gate).
+- [x] ADMIN/MANAGER/SALES policy tests;
+- [x] DB-backed temporary account lock;
+- [x] foundation/auth staging validation and bootstrap-secret removal;
+- [ ] additional-user credential provisioning/invitation/reset;
+- [ ] secure Tauri token storage before M7.
 
-### M6.4 — CRM API parity
+### M6.4 — CRM / read-model API parity
 
-Implemented slices:
+- [x] personnel read/create/update/activation;
+- [x] lead assignment/unassignment;
+- [x] lead list/detail/status;
+- [x] notes create/update/delete;
+- [x] append-only product overrides;
+- [x] follow-up list/create/reschedule/complete/cancel;
+- [x] pipeline read model;
+- [x] dashboard attention/KPI read model;
+- [x] analytics read model;
+- [x] SALES assigned-only scope;
+- [x] authenticated mutation audit actor;
+- [x] optimistic revision conflict handling;
+- [x] follow-up staging smoke validation;
+- [x] pipeline/dashboard/analytics staging smoke validation.
 
-- [x] personnel read/create/update/activation endpoints;
-- [x] lead assignment/unassignment endpoint;
-- [x] lead list with search/status/country/product/assignee/repeat/warning filters and paging;
-- [x] lead detail with source submissions, effective products, quality issues, notes and activity history;
-- [x] lead status endpoint;
-- [x] note create/update/delete API;
-- [x] product-interest override API with append-only decisions;
-- [x] server-derived audit actor for implemented mutations;
-- [x] optimistic revision conflict handling for the implemented mutable resources;
-- [x] SALES assigned-only query/detail/mutation scope;
-- [ ] follow-up API;
-- [ ] pipeline + Dashboard API;
-- [ ] analytics API;
-- [ ] manual import preview/commit API;
-- [ ] extend revision/lost-update protection to every remaining mutable CRM resource.
-
-Current HTTP routes:
+Current route families include:
 
 ```text
-GET    /api/v1/personnel
-POST   /api/v1/personnel
-PATCH  /api/v1/personnel/{userId}
-PATCH  /api/v1/personnel/{userId}/active
-
-GET    /api/v1/leads
-GET    /api/v1/leads/{contactId}
-PUT    /api/v1/leads/{contactId}/assignment
-PATCH  /api/v1/leads/{contactId}/status
-POST   /api/v1/leads/{contactId}/notes
-PATCH  /api/v1/leads/{contactId}/notes/{noteId}
-DELETE /api/v1/leads/{contactId}/notes/{noteId}?expectedRevision={revision}
-PUT    /api/v1/leads/{contactId}/product-interests/{productCode}
+/api/v1/personnel
+/api/v1/leads
+/api/v1/leads/{contactId}/notes
+/api/v1/leads/{contactId}/product-interests/{productCode}
+/api/v1/leads/{contactId}/follow-ups
+/api/v1/pipeline
+/api/v1/dashboard/attention
+/api/v1/analytics
 ```
 
-Handlers remain thin: they resolve the authenticated actor and delegate authorization/business/persistence behavior to server service code. Database rows are not treated as external API contracts.
+### M6.5 — Manual import parity
 
-### M6.5 — SQLite → PostgreSQL migration
+- [x] `POST /api/v1/imports/preview`;
+- [x] `POST /api/v1/imports/commit`;
+- [x] `GET /api/v1/imports/history`;
+- [x] actual multipart `.csv` / `.xlsx` input, 20 MiB max;
+- [x] canonical required-header / normalization / product / identity rules ported server-side;
+- [x] preview is read-only;
+- [x] commit reparses/replans against current DB;
+- [x] transaction advisory lock serializes concurrent imports;
+- [x] conflict/error rows block whole transaction;
+- [x] exact duplicate submission skipping and repeat-upload idempotency;
+- [x] repeat submission does not overwrite CRM status;
+- [x] agency fields preserved only in raw payload;
+- [x] authenticated ADMIN/MANAGER import activities;
+- [x] SALES import rejected;
+- [x] PostgreSQL integration test covering preview → commit → duplicate reimport → history;
+- [ ] real Coolify staging import smoke test.
+
+### M6.6 — SQLite → PostgreSQL migration
 
 - [ ] migration/export utility;
 - [ ] preserve stable IDs and source/audit timestamps;
@@ -190,7 +176,7 @@ Handlers remain thin: they resolve the authenticated actor and delegate authoriz
 
 ## API conventions
 
-Success/error responses use explicit DTOs. Current errors use a stable code/message object:
+Error responses use stable code/message objects, for example:
 
 ```json
 {
@@ -201,33 +187,34 @@ Success/error responses use explicit DTOs. Current errors use a stable code/mess
 }
 ```
 
-Request IDs are already generated and propagated through the HTTP layer; including the request ID inside the JSON error body remains a later API-envelope improvement.
+Request IDs are generated/propagated by the HTTP layer. PII is minimized in logs and diagnostics prefer application/request IDs.
 
-PII is minimized in logs. Server diagnostics prefer application IDs/request IDs.
+## Real staging status
 
-## Deployment contract
+Recorded in `docs/development/M6_STAGING_VALIDATION.md`.
 
-Coolify should run at least:
+**PASS:**
 
-- one private PostgreSQL resource;
-- one API application built from `server/Dockerfile`;
-- HTTPS reverse proxy/domain for API;
-- no public PostgreSQL port;
-- persistent PostgreSQL storage/backups.
+- health/readiness and API→PostgreSQL connectivity;
+- first ADMIN bootstrap/login/me/logout/revoked-token behavior;
+- persisted ADMIN after bootstrap secrets removed;
+- follow-up create/list/reschedule/stale-409/complete;
+- pipeline 8-column board and synthetic NEW lead;
+- analytics clean zero-submission result/all status buckets;
+- dashboard KPI/new-uncontacted synthetic lead result.
 
-The API container exposes `/health/ready` for dependency-aware readiness.
+**Next staging gate:** manual import preview → commit → history → duplicate reimport using synthetic staging-only CSV data.
 
-## Current validation checkpoint
+## Current CI checkpoint
 
-The following have passed the GitHub CI PostgreSQL 17 lane during M6 development:
+Manual-import code head `3b7f234c2399f7553a535288b9be7da946627473` passed **27/27** PostgreSQL 17 server tests. This includes all prior auth/RBAC/CRM/follow-up/read-model gates plus canonical import-domain tests and the PostgreSQL manual-import integration test. Frontend and Windows Rust/local checks also remained green at that checkpoint.
 
-- canonical migrations against an empty PostgreSQL database;
-- Argon2/session bootstrap-login-resolve-logout integration;
-- RBAC policy unit tests;
-- PostgreSQL CRM integration covering SALES scope, MANAGER assignment, authenticated status audit and stale revision rejection;
-- PostgreSQL note/product mutation integration covering create/update/delete, append-only product decisions, audit actor, SALES scoping and stale revisions;
-- authenticated HTTP route compilation/tests;
-- contact-row lock strategy used by scoped note/product mutations;
-- existing frontend checks and frozen local Tauri Rust tests remain separate gates.
+## Remaining M6 work
 
-M6 remains open. The next controlled API slice is follow-ups, followed by pipeline/dashboard/analytics/import parity, credential provisioning, backup operations and migration/reconciliation tooling before production deployment closure.
+1. manual import real staging smoke validation;
+2. additional-user credential provisioning/invitation/reset;
+3. PostgreSQL backup/restore operating evidence;
+4. SQLite schema-v4 → PostgreSQL migration/reconciliation;
+5. secure Tauri token storage before M7.
+
+M6 remains open and PR #15 remains draft. The production Tauri switch is M7; Web UI is M8.

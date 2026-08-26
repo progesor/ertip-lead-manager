@@ -619,9 +619,9 @@ mod tests {
         .execute(&pool).await.expect("seed users");
 
         for (id, name, status, assignee) in [
-            ("m6-pipe-new", "New Lead", "NEW", Some("m6-pipe-sales-a")),
-            ("m6-pipe-contacted", "Contacted Lead", "CONTACTED", Some("m6-pipe-sales-b")),
-            ("m6-pipe-won", "Won Lead", "WON", Some("m6-pipe-sales-a")),
+            ("m6-pipe-new", "M6 Pipeline Isolated New", "NEW", Some("m6-pipe-sales-a")),
+            ("m6-pipe-contacted", "M6 Pipeline Isolated Contacted", "CONTACTED", Some("m6-pipe-sales-b")),
+            ("m6-pipe-won", "M6 Pipeline Isolated Won", "WON", Some("m6-pipe-sales-a")),
         ] {
             sqlx::query(
                 "INSERT INTO lead_contacts (id, display_name, status, assigned_user_id, revision, created_at, updated_at, latest_submission_at, submission_count) VALUES ($1, $2, $3, $4, 0, now(), now(), now(), 1)",
@@ -639,12 +639,16 @@ mod tests {
         let sales_a = Actor { user_id: "m6-pipe-sales-a".to_string(), role: Role::Sales };
         let service = PipelineService::new(pool.clone());
 
-        let active = service.board(&manager, PipelineBoardRequest::default()).await.expect("manager active board");
+        let active = service.board(&manager, PipelineBoardRequest {
+            search: Some("m6 pipeline isolated".to_string()),
+            ..PipelineBoardRequest::default()
+        }).await.expect("manager active board");
         assert_eq!(active.columns.len(), 5);
         assert_eq!(active.visible_total, 2);
         assert_eq!(active.columns[0].cards[0].open_follow_up_count, 1);
 
         let full = service.board(&manager, PipelineBoardRequest {
+            search: Some("m6 pipeline isolated".to_string()),
             include_terminal: Some(true),
             ..PipelineBoardRequest::default()
         }).await.expect("manager full board");
@@ -652,6 +656,7 @@ mod tests {
         assert_eq!(full.visible_total, 3);
 
         let sales = service.board(&sales_a, PipelineBoardRequest {
+            search: Some("m6 pipeline isolated".to_string()),
             include_terminal: Some(true),
             ..PipelineBoardRequest::default()
         }).await.expect("sales scoped board");
@@ -659,6 +664,7 @@ mod tests {
         assert!(sales.columns.iter().flat_map(|column| &column.cards).all(|card| card.assigned_user_id.as_deref() == Some("m6-pipe-sales-a")));
 
         let overdue = service.board(&manager, PipelineBoardRequest {
+            search: Some("m6 pipeline isolated".to_string()),
             follow_up_mode: Some("OVERDUE".to_string()),
             now_utc: Some("2026-08-25T07:00:00Z".to_string()),
             ..PipelineBoardRequest::default()
@@ -667,6 +673,7 @@ mod tests {
         assert_eq!(overdue.columns[0].cards[0].id, "m6-pipe-new");
 
         let forbidden = service.board(&sales_a, PipelineBoardRequest {
+            search: Some("m6 pipeline isolated".to_string()),
             assigned_user_id: Some("m6-pipe-sales-b".to_string()),
             ..PipelineBoardRequest::default()
         }).await;

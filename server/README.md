@@ -1,14 +1,16 @@
 # Ertip Lead Manager Server
 
-M6 centralized API/auth process.
+M6 centralized Rust/Axum API backed by private PostgreSQL.
 
 ## Runtime
 
-Required `DATABASE_URL` points to private PostgreSQL. Optional runtime settings: `ELM_BIND_ADDR`, `ELM_DB_MAX_CONNECTIONS`, `ELM_SESSION_TTL_HOURS`, `RUST_LOG`. An empty database may bootstrap one initial ADMIN with temporary `ELM_BOOTSTRAP_ADMIN_*` values; remove them after validation.
+Required: `DATABASE_URL`. Optional: `ELM_BIND_ADDR`, `ELM_DB_MAX_CONNECTIONS`, `ELM_SESSION_TTL_HOURS`, `RUST_LOG`. Empty databases may temporarily use `ELM_BOOTSTRAP_ADMIN_*`; remove those values after the initial ADMIN is validated.
 
-The server applies embedded migrations before listening. `/health/ready` includes a PostgreSQL dependency check.
+`/health/ready` performs a PostgreSQL readiness check. Coolify exposes only the HTTPS API; PostgreSQL remains private.
 
-## Authentication
+## Authentication / credentials
+
+Tauri uses opaque bearer sessions; Web uses Secure/HttpOnly/SameSite=Lax cookies. Only SHA-256 session-token hashes are persisted. Passwords use Argon2id.
 
 ```text
 POST /api/v1/auth/login/tauri
@@ -21,32 +23,26 @@ POST /api/v1/personnel/{userId}/auth/invitation
 POST /api/v1/personnel/{userId}/auth/reset
 ```
 
-Tauri uses opaque bearer sessions and Web uses Secure/HttpOnly/SameSite=Lax cookies. Only SHA-256 session-token hashes are persisted. Passwords use Argon2id.
-
-ADMIN can issue a 24-hour one-time invitation token to active personnel with an e-mail and no existing credentials. Only the token hash is stored; the user activates it and chooses a 12–128 character password.
-
-ADMIN reset marks credentials reset-pending, blocks old-password login, revokes every active target session and returns a one-time reset token. The replacement password is established through the same activation endpoint. Final login reset-gate checking and session insertion are atomic under a PostgreSQL credential-row lock.
-
-Self password change keeps the current session and revokes all other sessions. Credential events are recorded in `auth_security_events`. M6 does not couple token delivery to an e-mail provider.
+ADMIN issues 24-hour one-time invitation/reset tokens; only their SHA-256 hashes are stored. Users choose their own 12–128 character passwords at activation. ADMIN reset immediately blocks old-password login and revokes all target sessions. Self password change keeps the current session and revokes all others. Login reset-gate checking and session insertion are atomic under the PostgreSQL credential-row lock. Credential security events are persisted separately.
 
 ## Authorization
 
-- ADMIN: personnel + credential administration and all CRM/read-model/import operations.
-- MANAGER: personnel read and global CRM/read-model/import operations; no personnel/credential administration.
-- SALES: assigned-own CRM scope only; no personnel, assignment, credential administration or import.
+- ADMIN: personnel/credential administration + all CRM/read-model/import operations.
+- MANAGER: personnel read + global CRM/read-model/import operations; no personnel/credential mutation.
+- SALES: assigned-own CRM scope only; no assignment, credential administration or import.
 
-## CRM / read models / imports
+## CRM / read models / import
 
-Implemented: personnel, lead list/detail/status/assignment, notes, append-only product overrides, follow-ups, pipeline, dashboard, analytics and manual import.
+Implemented: personnel, lead list/detail/status/assignment, notes, product overrides, follow-ups, pipeline, dashboard, analytics and manual CSV/XLSX import.
 
-Manual import accepts real `.csv`/`.xlsx` multipart uploads up to 20 MiB. Preview is read-only. Commit reparses/replans against current PostgreSQL state, serializes import transactions, rolls back on blocking identity/row errors, skips exact duplicate external IDs, preserves CRM status on repeat submissions and keeps agency CRM-looking fields raw-payload-only. Reimport is submission-idempotent while retaining batch history.
+Manual import preview is read-only. Commit reparses/replans against current PostgreSQL state, serializes concurrent imports, rolls back blocking identity/row errors, skips exact duplicate external IDs, preserves CRM status on repeat submissions and remains submission-idempotent while recording batch history.
 
-Mutable CRM resources use revision-based lost-update protection and server-derived audit actors.
+Mutable CRM state uses revision conflict protection and server-derived audit actors.
 
-## Coolify checkpoint
+## M6 checkpoint
 
-Real staging PASS: foundation/auth/bootstrap cleanup, follow-ups, pipeline/dashboard/analytics and manual import preview/commit/history/idempotent reimport.
+Real staging PASS: foundation/auth/bootstrap cleanup, follow-ups, pipeline/dashboard/analytics and manual import including exact-file duplicate reimport.
 
-Credential lifecycle is code/CI PASS with **28/28 PostgreSQL server tests** and is the next deliberate staging smoke test.
+Credential lifecycle is code/CI PASS with **28/28 PostgreSQL server tests** and is the next deliberate staging gate.
 
-Remaining after credential staging: PostgreSQL backup/restore evidence, SQLite schema-v4 → PostgreSQL migration/reconciliation and secure Tauri token storage before M7 production API rollout.
+Remaining: credential staging, backup/restore evidence, SQLite-v4 → PostgreSQL migration/reconciliation, and secure Tauri token storage before M7 production API switch.

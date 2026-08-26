@@ -2,82 +2,64 @@
 
 ## Status
 
-**IN PROGRESS** — Issue #14, draft PR #15, branch `feat/m6-central-backend-foundation`. Frozen fallback remains `v0.1.0-local`.
+**IN PROGRESS** — Issue #14, draft PR #15, branch `feat/m6-central-backend-foundation`. Frozen local fallback remains `v0.1.0-local`.
 
-## Architecture
+## Target
 
 ```text
 Windows Tauri ─┐
-               ├── HTTPS /api/v1 ── Rust/Axum Auth + CRM API ── private PostgreSQL
+               ├── HTTPS /api/v1 ── Rust/Axum API/Auth ── private PostgreSQL
 Future Web ────┘
 ```
 
-PostgreSQL is never client-facing. Web uses Secure/HttpOnly sessions; Tauri uses opaque bearer sessions. Raw session tokens are not persisted. Passwords use Argon2id. Trusted audit actor identity always comes from the server session.
+PostgreSQL is never client-facing. Server sessions establish trusted user/audit identity. Tauri uses opaque bearer sessions; Web uses Secure/HttpOnly cookies. Passwords use Argon2id.
 
-## Implemented M6 surface
+## Implemented
 
-- PostgreSQL migrations/constraints/indexes and dependency-aware readiness;
-- Coolify Docker deployment contract;
-- first-ADMIN bootstrap, login/logout/current session and failed-login lock;
-- ADMIN/MANAGER/SALES server-side authorization;
-- personnel and assignment;
-- lead list/detail/status;
-- notes and append-only product overrides;
-- follow-up lifecycle;
-- pipeline/dashboard/analytics read models;
-- server-side CSV/XLSX manual import preview/commit/history;
+- PostgreSQL schema/migrations/readiness and Coolify container contract;
+- bootstrap ADMIN, login/logout/current-session, failed-login lock;
+- ADMIN/MANAGER/SALES server-side RBAC;
+- personnel/assignment and lead list/detail/status;
+- notes, append-only product overrides and follow-ups;
+- pipeline/dashboard/analytics;
+- real CSV/XLSX manual import preview/commit/history;
 - additional-user invitation/activation/password-change/reset lifecycle.
 
-SALES access is assigned-own only for CRM/read models. MANAGER has global CRM/read-model/import access but no personnel or credential administration. ADMIN has all current privileges.
+## Credential lifecycle
 
-## Additional-user credential lifecycle
+ADMIN issues a 24-hour one-time `PROVISION` token to active personnel with e-mail and no credentials. Only the SHA-256 token hash is stored. The user activates it and chooses a 12–128 character password.
 
-ADMIN can issue a 24-hour one-time `PROVISION` token for active personnel with an e-mail and no credentials. Only the SHA-256 hash is stored; the raw token is returned once. The user activates the token and chooses a 12–128 character password, which is Argon2id-hashed.
+ADMIN reset immediately marks reset-pending, revokes all target sessions and blocks old-password login, then returns a one-time `RESET` token. Reset activation establishes the replacement password. Self password change retains the current session and revokes other sessions. Credential events are stored in `auth_security_events`.
 
-ADMIN reset marks the target credential reset-pending, revokes all target sessions, blocks old-password login, revokes unused one-time tokens and returns a 24-hour `RESET` token. Reset activation establishes the replacement password.
+The final login reset-gate check and session insertion are atomic under a PostgreSQL credential-row lock, eliminating the old-password reset/login race.
 
-Self password change keeps the current session but revokes all other sessions. Credential security events are stored separately in `auth_security_events`.
+Credential administration is ADMIN-only. E-mail delivery is deliberately outside the M6 server lifecycle.
 
-The final login reset-gate check and session insertion share one PostgreSQL transaction under the credential-row lock. If reset happens first, login cannot insert a session; if login happens first, the following reset revokes it.
+## Manual import
 
-E-mail delivery is intentionally not coupled to this lifecycle in M6.
-
-## Manual import invariants
-
-- actual `.csv` / `.xlsx` uploads; server never trusts client-normalized lead JSON;
-- preview is read-only;
-- commit reparses/replans using current PostgreSQL state;
-- advisory transaction lock serializes concurrent imports;
-- identity conflict/row error blocks the entire commit;
-- exact duplicate external IDs are skipped;
-- repeat submissions do not overwrite CRM status;
-- agency `Status` / `İletişime Geçme Tarihi` remain raw-payload-only;
-- repeated upload is idempotent for submissions but still creates batch history;
-- authenticated ADMIN/MANAGER actor is recorded for imported activities.
+Server parses actual `.csv` / `.xlsx`; client-normalized JSON is never trusted. Preview is read-only. Commit reparses/replans from current PostgreSQL state, serializes concurrent imports, rolls back on blocking identity/row errors, skips exact duplicate external IDs, preserves existing CRM status on repeat submissions and keeps agency `Status` / `İletişime Geçme Tarihi` raw-payload-only. Reimport is submission-idempotent while still creating import-batch history.
 
 ## Real staging PASS
 
-At `lead-api-staging.progesor.net`:
+`lead-api-staging.progesor.net` has passed:
 
-- rolling deployment + PostgreSQL readiness;
-- first ADMIN bootstrap and later bootstrap-secret removal;
+- rolling deployment / PostgreSQL readiness;
+- first ADMIN bootstrap and removal of bootstrap secrets;
 - HTTPS login, `/me`, logout and revoked-token 401;
-- follow-up create/list/reschedule/stale-409/complete;
+- follow-up lifecycle including stale 409;
 - pipeline/dashboard/analytics;
-- manual import preview/first commit/history;
-- exact-file reimport producing 0 importable submissions and 6 exact duplicates while recording a second committed batch.
+- manual import preview/commit/history;
+- exact-file reimport yielding zero new submissions and six exact duplicates with a second committed batch.
 
-No real customer data or raw secrets are recorded in staging evidence.
+## CI
 
-## CI checkpoint
+PostgreSQL 17 server suite passes **28/28 tests**, including credential invitation/activation, multi-session self password change, ADMIN reset, session revocation, old-password rejection, reset activation, manual import and all prior CRM/read-model tests.
 
-The PostgreSQL 17 server suite passes **28/28 tests** with credential invitation/activation, multi-session self password change, ADMIN reset, session revocation, old-password rejection, reset activation, manual import, CRM/follow-up and read-model tests included.
+## Remaining M6 acceptance
 
-## Remaining M6 acceptance work
-
-1. deliberate real-staging credential lifecycle smoke test;
+1. credential lifecycle real-staging smoke test;
 2. PostgreSQL backup/restore runbook + evidence;
-3. SQLite schema-v4 → PostgreSQL migration/reconciliation tooling + representative test;
+3. SQLite schema-v4 → PostgreSQL migration/reconciliation + representative test;
 4. secure Tauri token storage before M7 production API switch.
 
-PR #15 stays draft/open and M6 stays open until these gates pass.
+PR #15 remains draft/open until these gates pass.

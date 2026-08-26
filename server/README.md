@@ -6,7 +6,7 @@ M6 centralized Rust/Axum API backed by private PostgreSQL.
 
 Required: `DATABASE_URL`. Optional: `ELM_BIND_ADDR`, `ELM_DB_MAX_CONNECTIONS`, `ELM_SESSION_TTL_HOURS`, `RUST_LOG`. Empty databases may temporarily use `ELM_BOOTSTRAP_ADMIN_*`; remove those values after the initial ADMIN is validated.
 
-`/health/ready` performs a PostgreSQL readiness check. Coolify exposes only the HTTPS API; PostgreSQL remains private.
+The server applies embedded migrations before listening. `/health/ready` includes a PostgreSQL dependency check.
 
 ## Authentication / credentials
 

@@ -6,6 +6,10 @@ use axum::{
     routing::{get, patch, post},
 };
 use serde::Serialize;
+use tower_http::{
+    request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
+    trace::TraceLayer,
+};
 use tracing::error;
 
 use crate::{
@@ -140,6 +144,8 @@ impl From<CrmError> for ApiHttpError {
 }
 
 pub fn router(state: AppState) -> Router {
+    let request_id_header = axum::http::HeaderName::from_static("x-request-id");
+
     Router::new()
         .route(
             "/api/v1/leads/{contact_id}/follow-ups",
@@ -158,6 +164,9 @@ pub fn router(state: AppState) -> Router {
             post(cancel_followup),
         )
         .with_state(state)
+        .layer(PropagateRequestIdLayer::new(request_id_header.clone()))
+        .layer(SetRequestIdLayer::new(request_id_header, MakeRequestUuid))
+        .layer(TraceLayer::new_for_http())
 }
 
 async fn list_followups(
@@ -259,10 +268,7 @@ fn session_token_from_headers(headers: &HeaderMap) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use axum::{
-        body::Body,
-        http::Request,
-    };
+    use axum::{body::Body, http::Request};
     use tower::ServiceExt;
 
     use super::router;
@@ -289,5 +295,6 @@ mod tests {
             .expect("response");
 
         assert_eq!(response.status(), axum::http::StatusCode::UNAUTHORIZED);
+        assert!(response.headers().contains_key("x-request-id"));
     }
 }

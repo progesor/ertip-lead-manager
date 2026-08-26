@@ -2,7 +2,7 @@
 
 ## Status
 
-**STAGING FOUNDATION / AUTH / FOLLOW-UP / READ MODELS: PASS**
+**STAGING FOUNDATION / AUTH / FOLLOW-UP / READ MODELS / MANUAL IMPORT: PASS**
 
 Validation date: 2026-08-26  
 Environment: Coolify staging  
@@ -28,17 +28,16 @@ private PostgreSQL 17
 
 ## Deployment / health evidence
 
-The staging application is deployed from the M6 branch through `server/Dockerfile`.
+The staging application was deployed from the M6 branch through `server/Dockerfile`.
 
 Validated:
 
-- rolling update starts a new container;
+- rolling update starts a new container before retiring the old container;
 - Dockerfile custom healthcheck is detected by Coolify;
 - `/health/ready` passes after the configured start period;
 - readiness identifies `ertip-lead-manager-server` version `0.1.0` with status `ready`;
-- the new container becomes healthy before the previous container is removed;
 - HTTPS `/health/ready` succeeds through the staging hostname;
-- readiness includes a real PostgreSQL dependency check, validating API → PostgreSQL connectivity as well as process liveness.
+- readiness includes a real PostgreSQL dependency check and therefore validates API → PostgreSQL connectivity.
 
 ## Bootstrap ADMIN validation
 
@@ -61,7 +60,7 @@ This proves the bootstrap variables are initial-provisioning material only. The 
 
 ## Follow-up API staging validation
 
-The PostgreSQL-backed follow-up HTTP slice was redeployed after its CI gate passed. A synthetic staging-only lead was used; no customer data was required.
+A synthetic staging-only lead was used; no customer data was required.
 
 Validated:
 
@@ -71,69 +70,57 @@ Validated:
 - reschedule with revision increment;
 - stale `expectedRevision` rejection with HTTP `409`;
 - complete transition to `COMPLETED`;
-- final list reflects the terminal state;
-- staging remained healthy through deployment and smoke test.
-
-This closes the M6 follow-up API slice across service tests, HTTP wiring, PostgreSQL 17 CI and real Coolify staging.
+- final list reflects the terminal state.
 
 ## Pipeline / dashboard / analytics staging validation
 
-A deliberate green checkpoint was deployed after the PostgreSQL 17, Windows/local, frontend, server-image and Tauri packaging gates passed. The existing synthetic lead `staging-smoke-lead-001` was used to verify read-only behavior.
-
-### Pipeline
-
-`GET /api/v1/pipeline?includeTerminal=true` returned successfully and preserved the expected board model:
-
-- eight columns: `NEW`, `CONTACTED`, `REPLIED`, `QUALIFIED`, `QUOTE_SENT`, `WON`, `LOST`, `INVALID`;
-- `perColumnLimit = 100`;
-- `visibleTotal = 1`;
-- `staging-smoke-lead-001` appeared in `NEW`;
-- terminal columns were present and empty;
-- card fields for assignment, repeat state, product interests, platforms, warnings and open follow-up summary were returned without error.
-
-### Analytics
-
-`GET /api/v1/analytics` returned successfully. The synthetic smoke lead has no imported submission, therefore the expected result was an empty submission range and zero submission aggregates rather than a fabricated analytics record.
+A deliberate green-checkpoint deployment validated the PostgreSQL read models with the synthetic staging lead.
 
 Validated:
 
-- `submissions = 0`;
-- `uniqueContacts = 0`;
-- `repeatSubmissions = 0`;
-- all eight current-status funnel buckets were returned;
-- country/platform/product/campaign/form/adset/ad breakdown arrays returned cleanly as empty arrays.
+- pipeline returned all eight status columns (`NEW`, `CONTACTED`, `REPLIED`, `QUALIFIED`, `QUOTE_SENT`, `WON`, `LOST`, `INVALID`);
+- `perColumnLimit` was `100` and the synthetic lead appeared in `NEW`;
+- analytics returned zero submissions/unique/repeat rows as expected because the synthetic lead had no source submission;
+- analytics still returned all eight current-status funnel buckets;
+- dashboard returned one total contact and one NEW contact;
+- the synthetic lead appeared in `newUncontacted`;
+- follow-up/repeat/quality attention groups were empty as expected for that fixture.
 
-### Dashboard
+## Manual import staging validation
 
-`GET /api/v1/dashboard/attention` returned successfully for explicit UTC day/recent/analytics windows.
+Manual import was validated through the public HTTPS API using a generated staging-only UTF-8 CSV containing six synthetic rows and no real customer data.
 
-Validated:
+Preview result:
 
-- `totalContacts = 1`;
-- `newContacts = 1`;
-- `staging-smoke-lead-001` appeared in `newUncontacted`;
-- the 30-day submission summary remained zero as expected for a lead without a submission;
-- due-today, overdue, recent-repeat and open-quality groups returned valid empty results.
+```text
+totalRows             = 6
+importableSubmissions = 5
+newContacts           = 4
+repeatSubmissions     = 1
+exactDuplicates       = 1
+identityConflicts     = 0
+rowErrors             = 0
+warningCount          = 0
+```
 
-This closes pipeline/dashboard/analytics across PostgreSQL integration tests and live Coolify staging read-only smoke validation.
+The first commit returned the same plan summary and recorded a `COMMITTED` import batch with five imported submissions, one exact duplicate, one repeat submission and zero warnings/errors.
 
-## Manual import checkpoint
+The exact same file was then submitted a second time. The second commit returned:
 
-Server-side manual import parity is implemented after the read-model staging checkpoint. It accepts real CSV/XLSX multipart uploads and applies the canonical local import rules on the server rather than trusting client-normalized JSON.
+```text
+totalRows             = 6
+importableSubmissions = 0
+newContacts           = 0
+repeatSubmissions     = 0
+exactDuplicates       = 6
+identityConflicts     = 0
+rowErrors             = 0
+warningCount          = 0
+```
 
-The PostgreSQL 17 integration gate validates:
+Import history then contained two committed batches for the synthetic file: the original five-submission import and the zero-submission all-duplicate reimport. This validates live staging idempotency while preserving import-batch history.
 
-- preview is read-only;
-- ADMIN/MANAGER import permission and SALES rejection;
-- same-file plan with 4 new contacts, 1 repeat submission and 1 exact duplicate;
-- first commit writes 5 unique submissions;
-- second commit writes no duplicate submissions while recording batch history;
-- repeat import does not overwrite an independently changed CRM status;
-- agency `Status` and `İletişime Geçme Tarihi` values remain in raw payload only;
-- authenticated actor is stored on `LEAD_CREATED` / `SUBMISSION_IMPORTED` activities;
-- import history is persisted.
-
-Manual import is **not yet marked staging PASS**. The next deliberate deployment must exercise preview → commit → history → exact-duplicate reimport over the public staging API with staging-only synthetic data.
+No raw activation/session tokens, passwords or real lead data are recorded in this document.
 
 ## Secret hygiene
 
@@ -148,12 +135,11 @@ Current staging policy:
 
 ## Remaining staging validation
 
-Foundation/auth/follow-up/read-model validation is complete. M6 still requires staged validation/evidence for:
+Foundation/auth/follow-up/read-model/manual-import staging validation is complete. M6 still requires staged validation/evidence for:
 
-- manual import preview/commit/history and duplicate reimport;
-- representative personnel/role-policy and SALES assigned-only behavior where not already covered by server integration tests;
-- additional-user credential lifecycle when implemented;
+- additional-user invitation/activation/password-change/reset lifecycle;
+- representative ADMIN/MANAGER/SALES role behavior where useful;
 - PostgreSQL backup/restore;
 - SQLite schema-v4 → PostgreSQL migration/reconciliation.
 
-Passing these checkpoints does not close M6 or authorize switching the production Tauri client to API mode. That remains an M7 action after the complete M6 acceptance gate.
+Passing these checkpoints does not by itself authorize switching the production Tauri client to API mode. That remains an M7 action after the complete M6 acceptance gate.

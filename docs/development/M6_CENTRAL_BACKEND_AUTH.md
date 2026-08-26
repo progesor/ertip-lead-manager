@@ -57,7 +57,7 @@ Implemented flow:
 
 Credential administration is ADMIN-only. MANAGER/SALES cannot issue invitation/reset tokens.
 
-Login/reset concurrency is protected: after password verification, the reset-gate recheck and session creation occur in one PostgreSQL transaction while the credential row is locked. A reset therefore cannot be followed by a late session insert authenticated with the old password.
+Login/reset concurrency is protected: after password verification, the reset-gate recheck and session creation occur in one PostgreSQL transaction while the credential row is locked. If login wins first, a later reset revokes that session; if reset wins first, login sees reset-pending and cannot create a session.
 
 Credential lifecycle events are persisted separately in `auth_security_events`; no plaintext password or raw one-time token is stored there.
 
@@ -163,21 +163,21 @@ GET  /api/v1/imports/history
 
 ## Real staging checkpoint
 
-The following are PASS on `lead-api-staging.progesor.net`:
+PASS on `lead-api-staging.progesor.net`:
 
-- container rolling deployment and PostgreSQL readiness;
+- container/PostgreSQL readiness;
 - first ADMIN bootstrap and bootstrap-secret removal;
-- HTTPS bearer login, `/me`, logout, revoked-token 401;
+- HTTPS bearer login, `/me`, logout and revoked-token 401;
 - follow-up lifecycle including stale 409;
 - pipeline/dashboard/analytics read models;
 - manual import preview/commit/history;
-- exact same import file re-submission producing zero new submissions and six exact duplicates while recording a second batch.
+- exact same import re-submission producing zero new submissions and six exact duplicates while recording a second batch.
 
 No passwords, raw bearer tokens or real customer data are recorded in repository evidence.
 
 ## CI checkpoint
 
-Credential lifecycle code has passed the PostgreSQL 17 server gate with **28/28 tests**, including invitation, activation, multi-session password change, ADMIN reset, session revocation, old-password rejection and reset activation. Existing manual-import, CRM, follow-up and read-model integration tests remain green in the same suite.
+Credential lifecycle code passes the PostgreSQL 17 server gate with **28/28 tests**, including invitation, activation, multi-session password change, ADMIN reset, session revocation, old-password rejection and reset activation. Existing manual-import, CRM, follow-up and read-model integration tests remain green in the same suite.
 
 ## Remaining M6 acceptance work
 

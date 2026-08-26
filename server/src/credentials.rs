@@ -233,6 +233,9 @@ impl CredentialService {
         .await?;
 
         let response_revision = if purpose == TokenPurpose::Reset {
+            // Mark reset-pending before revoking sessions. AuthService::login locks this same
+            // credential row while its final reset-gate check and session insertion run,
+            // so a verified old password cannot race a reset into a late valid session.
             sqlx::query(
                 r#"
                 UPDATE app_credentials

@@ -73,15 +73,9 @@ POST /api/v1/personnel/{userId}/auth/invitation
 }
 ```
 
-Requirements:
+The target must be active, have an e-mail address and not already have credentials. The server returns a random one-time `PROVISION` token with a 24-hour expiry. Only the SHA-256 token hash is persisted. The raw token is returned once and should be delivered through a trusted channel; M6 does not send e-mail itself.
 
-- target personnel is active;
-- target has an e-mail address;
-- target does not already have credentials.
-
-The server returns a random one-time `PROVISION` token with a 24-hour expiry. Only the SHA-256 token hash is persisted. The raw token is returned once and should be delivered through a trusted channel; M6 does not send e-mail itself.
-
-The user establishes their password through the unauthenticated token endpoint:
+The user establishes their password through:
 
 ```text
 POST /api/v1/auth/activate
@@ -91,7 +85,7 @@ POST /api/v1/auth/activate
 }
 ```
 
-The token is single-use. Activation Argon2-hashes the chosen password, enables credential login, records a security event and increments personnel revision.
+The token is single-use. Activation Argon2id-hashes the chosen password, enables credential login, records a security event and increments personnel revision.
 
 ADMIN reset:
 
@@ -102,9 +96,9 @@ POST /api/v1/personnel/{userId}/auth/reset
 }
 ```
 
-Starting a reset immediately closes the old-password login gate, clears failed-login lock state, revokes every active session for the target user, revokes prior unused one-time tokens, increments personnel revision and returns a new 24-hour `RESET` token. The user completes the reset through the same `/api/v1/auth/activate` endpoint with a new password.
+Starting a reset immediately closes the old-password login gate, clears failed-login lock state, revokes every active session for the target user, revokes prior unused one-time tokens, increments personnel revision and returns a new 24-hour `RESET` token. The user completes the reset through `/api/v1/auth/activate` with a new password.
 
-The login reset-gate recheck and session creation are atomic under a PostgreSQL credential-row lock. A reset therefore cannot race an already-verified old-password login into creating a late valid session.
+The final login reset-gate recheck and session creation are atomic inside one PostgreSQL transaction that locks the credential row. If login wins the lock, a following reset revokes that new session; if reset wins, login sees reset-pending and cannot create a session. This closes the old-password reset/login race.
 
 Authenticated users may change their own password:
 
